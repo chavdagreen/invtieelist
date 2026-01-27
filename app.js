@@ -1,4 +1,4 @@
-// Invitee List Application - Main JavaScript with Firebase Cloud Sync
+// Invitee List Application - Main JavaScript with Firebase Cloud Sync & Multi-User Support
 
 // Firebase Configuration
 const firebaseConfig = {
@@ -14,34 +14,204 @@ const firebaseConfig = {
 // Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
+const auth = firebase.auth();
+
 let guestsRef = null;
 let hostsRef = null;
 let eventsRef = null;
+let templatesRef = null;
+
 // Data Storage Keys (for local backup)
 const STORAGE_KEY_BASE = 'inviteeProGuests';
 const HOSTS_STORAGE_KEY_BASE = 'inviteeProHosts';
 const EVENT_STORAGE_KEY_BASE = 'inviteeProSelectedEvent';
+const TEMPLATES_STORAGE_KEY = 'inviteeProTemplates';
 
 // Global Variables
 let guests = [];
 let hosts = [];
+let whatsappTemplates = [];
 let deleteTargetId = null;
 let isOnline = navigator.onLine;
 
+let currentUser = null;
+let currentUserId = null;
 let currentEventId = null;
 let currentEventName = null;
 let currentEventMeta = null;
+
+// ==================== AUTHENTICATION ====================
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
     setupOnlineStatusListeners();
     showSyncStatus();
-    initEvents();
+    setupContactPicker();
+
+    // Listen for auth state changes
+    auth.onAuthStateChanged((user) => {
+        if (user) {
+            currentUser = user;
+            currentUserId = user.uid;
+            onUserSignedIn(user);
+        } else {
+            currentUser = null;
+            currentUserId = null;
+            onUserSignedOut();
+        }
+    });
 });
 
+function onUserSignedIn(user) {
+    // Hide login overlay
+    document.getElementById('loginOverlay').classList.remove('show');
+
+    // Update user pill
+    const userPill = document.getElementById('userPill');
+    const userAvatar = document.getElementById('userAvatar');
+    const userName = document.getElementById('userName');
+    const addGuestBtn = document.getElementById('addGuestBtn');
+
+    if (userPill) userPill.style.display = 'flex';
+    if (addGuestBtn) addGuestBtn.style.display = 'flex';
+
+    if (user.photoURL) {
+        userAvatar.innerHTML = `<img src="${user.photoURL}" alt="" style="width:100%;height:100%;border-radius:50%;">`;
+    } else {
+        userAvatar.textContent = (user.displayName || user.email || 'U').charAt(0).toUpperCase();
+    }
+    userName.textContent = user.displayName || user.email?.split('@')[0] || 'User';
+
+    // Initialize user-specific data
+    initUserData();
+}
+
+function onUserSignedOut() {
+    // Show login overlay
+    document.getElementById('loginOverlay').classList.add('show');
+
+    // Hide user pill
+    const userPill = document.getElementById('userPill');
+    const addGuestBtn = document.getElementById('addGuestBtn');
+    if (userPill) userPill.style.display = 'none';
+    if (addGuestBtn) addGuestBtn.style.display = 'none';
+
+    // Clear data
+    guests = [];
+    hosts = [];
+    whatsappTemplates = [];
+    currentEventId = null;
+    currentEventMeta = null;
+
+    renderGuestTable();
+    renderHostDropdowns();
+    updateDashboard();
+    updateEventHeader(null);
+}
+
+function signInWithGoogle() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider)
+        .then((result) => {
+            showToast('Signed in successfully!', 'success');
+        })
+        .catch((error) => {
+            console.error('Google sign-in error:', error);
+            showToast(error.message || 'Sign-in failed', 'error');
+        });
+}
+
+function signInWithEmail() {
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+
+    if (!email || !password) {
+        showToast('Please enter email and password', 'error');
+        return;
+    }
+
+    auth.signInWithEmailAndPassword(email, password)
+        .then((result) => {
+            showToast('Signed in successfully!', 'success');
+        })
+        .catch((error) => {
+            console.error('Email sign-in error:', error);
+            showToast(error.message || 'Sign-in failed', 'error');
+        });
+}
+
+function signUpWithEmail() {
+    const name = document.getElementById('signupName').value.trim();
+    const email = document.getElementById('signupEmail').value.trim();
+    const password = document.getElementById('signupPassword').value;
+
+    if (!name || !email || !password) {
+        showToast('Please fill all fields', 'error');
+        return;
+    }
+
+    if (password.length < 6) {
+        showToast('Password must be at least 6 characters', 'error');
+        return;
+    }
+
+    auth.createUserWithEmailAndPassword(email, password)
+        .then((result) => {
+            // Update profile with name
+            return result.user.updateProfile({ displayName: name });
+        })
+        .then(() => {
+            showToast('Account created successfully!', 'success');
+        })
+        .catch((error) => {
+            console.error('Sign-up error:', error);
+            showToast(error.message || 'Sign-up failed', 'error');
+        });
+}
+
+function signOutUser() {
+    if (confirm('Are you sure you want to sign out?')) {
+        auth.signOut()
+            .then(() => {
+                showToast('Signed out successfully', 'success');
+            })
+            .catch((error) => {
+                showToast('Sign-out failed', 'error');
+            });
+    }
+}
+
+function showSignupForm() {
+    document.getElementById('loginForm').style.display = 'none';
+    document.getElementById('signupForm').style.display = 'block';
+}
+
+function showLoginForm() {
+    document.getElementById('signupForm').style.display = 'none';
+    document.getElementById('loginForm').style.display = 'block';
+}
+
+function initUserData() {
+    if (!currentUserId) return;
+
+    // Set up user-specific references
+    eventsRef = database.ref(`users/${currentUserId}/events`);
+    templatesRef = database.ref(`users/${currentUserId}/templates`);
+
+    // Load events and templates
+    loadEventsAndRestoreSelection();
+    loadWhatsappTemplates();
+}
+
 function initEvents() {
-    eventsRef = database.ref('events');
+    // This function is now called only after auth
+    if (!currentUserId) {
+        // Show login overlay if not authenticated
+        document.getElementById('loginOverlay').classList.add('show');
+        return;
+    }
+    eventsRef = database.ref(`users/${currentUserId}/events`);
     loadEventsAndRestoreSelection();
 }
 
@@ -267,7 +437,7 @@ function loadEventsAndRestoreSelection() {
 }
 
 async function selectEvent(eventId, meta) {
-    if (!eventId) return;
+    if (!eventId || !currentUserId) return;
     currentEventId = eventId;
     if (!meta && eventsRef) {
         try {
@@ -284,8 +454,9 @@ async function selectEvent(eventId, meta) {
 
     guestsRef?.off();
     hostsRef?.off();
-    guestsRef = database.ref(`events/${eventId}/guests`);
-    hostsRef = database.ref(`events/${eventId}/hosts`);
+    // User-specific paths
+    guestsRef = database.ref(`users/${currentUserId}/events/${eventId}/guests`);
+    hostsRef = database.ref(`users/${currentUserId}/events/${eventId}/hosts`);
 
     loadGuestsFromLocal();
     loadHostsFromLocal();
@@ -391,7 +562,7 @@ function renderEventDashboard(events) {
 }
 
 async function updateEventMetaStats() {
-    if (!currentEventId || !eventsRef) return;
+    if (!currentEventId || !eventsRef || !currentUserId) return;
     const stats = {
         totalFamilies: guests.length,
         totalGuests: guests.reduce((sum, g) => sum + (parseInt(g.members) || 0), 0),
@@ -400,7 +571,7 @@ async function updateEventMetaStats() {
         declined: guests.filter(g => g.rsvpStatus === 'Declined').length
     };
     try {
-        await eventsRef.child(`${currentEventId}/meta`).update({
+        await database.ref(`users/${currentUserId}/events/${currentEventId}/meta`).update({
             updatedAt: new Date().toISOString(),
             stats
         });
@@ -1210,6 +1381,11 @@ function normalizePhone(phone) {
 }
 
 async function downloadAllEventsBackup() {
+    if (!currentUserId) {
+        showToast('Please sign in first', 'error');
+        return;
+    }
+
     try {
         const snap = await eventsRef.get();
         const payload = { version: '3.0', exportDate: new Date().toISOString(), events: [] };
@@ -1221,8 +1397,8 @@ async function downloadAllEventsBackup() {
                 const meta = child.child('meta').val() || {};
                 promises.push(
                     Promise.all([
-                        database.ref(`events/${eventId}/guests`).get(),
-                        database.ref(`events/${eventId}/hosts`).get()
+                        database.ref(`users/${currentUserId}/events/${eventId}/guests`).get(),
+                        database.ref(`users/${currentUserId}/events/${eventId}/hosts`).get()
                     ]).then(([gs, hs]) => {
                         const guestsArr = [];
                         const hostsArr = [];
@@ -1252,7 +1428,7 @@ async function downloadAllEventsBackup() {
 }
 
 async function restoreAllEventsBackup(eventsArr) {
-    if (!Array.isArray(eventsArr)) throw new Error('Invalid events backup');
+    if (!Array.isArray(eventsArr) || !currentUserId) throw new Error('Invalid events backup');
     // Warning: This replaces ALL events
     await eventsRef.remove();
 
@@ -1260,12 +1436,417 @@ async function restoreAllEventsBackup(eventsArr) {
     for (const ev of eventsArr) {
         const id = ev.id || eventsRef.push().key;
         await eventsRef.child(`${id}/meta`).set(ev.meta || { name: 'Restored Event' });
-        const gRef = database.ref(`events/${id}/guests`);
-        const hRef = database.ref(`events/${id}/hosts`);
+        const gRef = database.ref(`users/${currentUserId}/events/${id}/guests`);
+        const hRef = database.ref(`users/${currentUserId}/events/${id}/hosts`);
         const guestsArr = Array.isArray(ev.guests) ? ev.guests : [];
         const hostsArr = Array.isArray(ev.hosts) ? ev.hosts : [];
         await gRef.remove(); await hRef.remove();
         for (const g of guestsArr) { const copy = { ...g }; delete copy.firebaseKey; await gRef.push(copy); }
         for (const h of hostsArr) { const copy = { ...h }; delete copy.firebaseKey; await hRef.push(copy); }
+    }
+}
+
+// ==================== WHATSAPP TEMPLATES ====================
+
+function loadWhatsappTemplates() {
+    if (!templatesRef) return;
+
+    templatesRef.on('value', (snap) => {
+        whatsappTemplates = [];
+        if (snap.exists()) {
+            snap.forEach((child) => {
+                whatsappTemplates.push({ ...child.val(), id: child.key });
+            });
+        }
+        renderTemplateList();
+        renderTemplateSelect();
+    });
+}
+
+function renderTemplateList() {
+    const container = document.getElementById('templateList');
+    if (!container) return;
+
+    if (whatsappTemplates.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">No templates yet. Add your first template below.</p>';
+        return;
+    }
+
+    container.innerHTML = whatsappTemplates.map(template => `
+        <div class="template-item">
+            <div class="template-item-content">
+                <div class="template-item-name">${escapeHtml(template.name)}</div>
+                <div class="template-item-preview">${escapeHtml(template.message)}</div>
+            </div>
+            <div class="template-item-actions">
+                <button class="btn btn-small btn-outline" onclick="useTemplate('${template.id}')" title="Use this template">Use</button>
+                <button class="btn btn-small btn-danger" onclick="deleteTemplate('${template.id}')" title="Delete">&#128465;</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderTemplateSelect() {
+    const select = document.getElementById('sendTemplateSelect');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Choose a template...</option>';
+    whatsappTemplates.forEach(template => {
+        select.innerHTML += `<option value="${template.id}">${escapeHtml(template.name)}</option>`;
+    });
+
+    // Add change listener for preview
+    select.onchange = updateMessagePreview;
+}
+
+function updateMessagePreview() {
+    const previewEl = document.getElementById('messagePreview');
+    const templateId = document.getElementById('sendTemplateSelect').value;
+
+    if (!templateId || !previewEl) {
+        if (previewEl) previewEl.textContent = 'Select a template to see preview...';
+        return;
+    }
+
+    const template = whatsappTemplates.find(t => t.id === templateId);
+    if (!template) return;
+
+    // Get first guest for preview
+    const sampleGuest = guests[0] || {
+        firstName: 'Guest',
+        surname: 'Name',
+        members: 2,
+        relativeOf: 'Host'
+    };
+
+    const message = formatTemplateMessage(template.message, sampleGuest);
+    previewEl.textContent = message;
+}
+
+function formatTemplateMessage(template, guest) {
+    const eventName = currentEventMeta?.name || 'our event';
+    const date = currentEventMeta?.date ? new Date(currentEventMeta.date).toLocaleDateString() : 'soon';
+    const venue = currentEventMeta?.venue || 'our venue';
+
+    return template
+        .replace(/{name}/gi, `${guest.firstName || ''} ${guest.surname || ''}`.trim() || 'Guest')
+        .replace(/{event}/gi, eventName)
+        .replace(/{date}/gi, date)
+        .replace(/{venue}/gi, venue)
+        .replace(/{members}/gi, guest.members || 1)
+        .replace(/{host}/gi, guest.relativeOf || '');
+}
+
+function openWhatsappTemplateModal() {
+    renderTemplateList();
+    renderTemplateSelect();
+    openModal('whatsappTemplateModal');
+}
+
+function addWhatsappTemplate() {
+    const name = document.getElementById('newTemplateName').value.trim();
+    const message = document.getElementById('newTemplateMessage').value.trim();
+
+    if (!name || !message) {
+        showToast('Please enter template name and message', 'error');
+        return;
+    }
+
+    if (!templatesRef) {
+        showToast('Please sign in first', 'error');
+        return;
+    }
+
+    templatesRef.push({
+        name,
+        message,
+        createdAt: new Date().toISOString()
+    }).then(() => {
+        showToast('Template added!', 'success');
+        document.getElementById('newTemplateName').value = '';
+        document.getElementById('newTemplateMessage').value = '';
+    }).catch((error) => {
+        showToast('Failed to add template', 'error');
+    });
+}
+
+function deleteTemplate(templateId) {
+    if (!confirm('Delete this template?')) return;
+
+    templatesRef.child(templateId).remove()
+        .then(() => showToast('Template deleted', 'success'))
+        .catch(() => showToast('Failed to delete', 'error'));
+}
+
+function useTemplate(templateId) {
+    const template = whatsappTemplates.find(t => t.id === templateId);
+    if (!template) return;
+
+    // Set as event's default template
+    if (currentEventId && eventsRef) {
+        eventsRef.child(`${currentEventId}/meta`).update({
+            whatsappTemplate: template.message
+        }).then(() => {
+            showToast('Template set as default for this event!', 'success');
+        });
+    }
+}
+
+function openBulkWhatsApp() {
+    const templateId = document.getElementById('sendTemplateSelect').value;
+    const filterValue = document.getElementById('sendToFilter').value;
+
+    if (!templateId) {
+        showToast('Please select a template', 'error');
+        return;
+    }
+
+    const template = whatsappTemplates.find(t => t.id === templateId);
+    if (!template) return;
+
+    // Filter guests based on selection
+    let targetGuests = [...guests];
+    if (filterValue === 'pending') {
+        targetGuests = guests.filter(g => g.rsvpStatus === 'Pending');
+    } else if (filterValue === 'confirmed') {
+        targetGuests = guests.filter(g => g.rsvpStatus === 'Confirmed');
+    } else if (filterValue === 'declined') {
+        targetGuests = guests.filter(g => g.rsvpStatus === 'Declined');
+    }
+
+    if (targetGuests.length === 0) {
+        showToast('No guests match the selected filter', 'error');
+        return;
+    }
+
+    // Confirm before opening multiple tabs
+    if (!confirm(`This will open WhatsApp for ${targetGuests.length} guest(s). Continue?`)) {
+        return;
+    }
+
+    // Open WhatsApp for each guest with a small delay
+    targetGuests.forEach((guest, index) => {
+        setTimeout(() => {
+            const message = formatTemplateMessage(template.message, guest);
+            const phone = normalizePhone(guest.whatsapp);
+            const encoded = encodeURIComponent(message);
+            window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank');
+        }, index * 500); // 500ms delay between each
+    });
+
+    showToast(`Opening WhatsApp for ${targetGuests.length} guests...`, 'success');
+    closeModal('whatsappTemplateModal');
+}
+
+// ==================== IMPORT GUESTS ====================
+
+function openImportGuestsModal() {
+    if (!currentEventId) {
+        showToast('Please select an event first', 'error');
+        return;
+    }
+
+    loadImportSourceEvents();
+    document.getElementById('importPreview').style.display = 'none';
+    document.getElementById('importGuestsBtn').disabled = true;
+    openModal('importGuestsModal');
+}
+
+async function loadImportSourceEvents() {
+    const select = document.getElementById('importSourceEvent');
+    if (!select || !eventsRef) return;
+
+    select.innerHTML = '<option value="">Select an event...</option>';
+
+    try {
+        const snap = await eventsRef.get();
+        if (snap.exists()) {
+            snap.forEach((child) => {
+                // Don't show current event as source
+                if (child.key !== currentEventId) {
+                    const meta = child.child('meta').val() || {};
+                    const dateStr = meta.date ? ` (${new Date(meta.date).toLocaleDateString()})` : '';
+                    select.innerHTML += `<option value="${child.key}">${escapeHtml(meta.name || 'Untitled')}${dateStr}</option>`;
+                }
+            });
+        }
+    } catch (e) {
+        console.error('Error loading events:', e);
+    }
+
+    // Add change listener
+    select.onchange = onImportSourceChange;
+}
+
+async function onImportSourceChange() {
+    const eventId = document.getElementById('importSourceEvent').value;
+    const previewDiv = document.getElementById('importPreview');
+    const importBtn = document.getElementById('importGuestsBtn');
+
+    if (!eventId) {
+        previewDiv.style.display = 'none';
+        importBtn.disabled = true;
+        return;
+    }
+
+    try {
+        // Get guests and hosts count from source event
+        const guestsSnap = await database.ref(`users/${currentUserId}/events/${eventId}/guests`).get();
+        const hostsSnap = await database.ref(`users/${currentUserId}/events/${eventId}/hosts`).get();
+
+        let familyCount = 0;
+        let guestCount = 0;
+        let hostCount = 0;
+
+        if (guestsSnap.exists()) {
+            guestsSnap.forEach((child) => {
+                familyCount++;
+                guestCount += parseInt(child.val().members) || 1;
+            });
+        }
+
+        if (hostsSnap.exists()) {
+            hostsSnap.forEach(() => hostCount++);
+        }
+
+        document.getElementById('importFamilyCount').textContent = familyCount;
+        document.getElementById('importGuestCount').textContent = guestCount;
+        document.getElementById('importHostCount').textContent = hostCount;
+
+        previewDiv.style.display = 'block';
+        importBtn.disabled = familyCount === 0;
+    } catch (e) {
+        console.error('Error loading source event:', e);
+        showToast('Failed to load event data', 'error');
+    }
+}
+
+async function importGuestsFromEvent() {
+    const sourceEventId = document.getElementById('importSourceEvent').value;
+    const importHosts = document.getElementById('importHostsToo').checked;
+    const resetRsvp = document.getElementById('resetRsvpStatus').checked;
+
+    if (!sourceEventId || !currentEventId || !currentUserId) {
+        showToast('Please select a source event', 'error');
+        return;
+    }
+
+    try {
+        // Get source data
+        const guestsSnap = await database.ref(`users/${currentUserId}/events/${sourceEventId}/guests`).get();
+        const hostsSnap = await database.ref(`users/${currentUserId}/events/${sourceEventId}/hosts`).get();
+
+        const importedGuests = [];
+        const importedHosts = [];
+
+        if (guestsSnap.exists()) {
+            guestsSnap.forEach((child) => {
+                const guest = { ...child.val() };
+                delete guest.firebaseKey;
+                guest.id = generateId();
+                guest.createdAt = new Date().toISOString();
+                guest.updatedAt = new Date().toISOString();
+
+                if (resetRsvp) {
+                    guest.rsvpStatus = 'Pending';
+                    guest.statusHistory = [{
+                        from: null,
+                        to: 'Pending',
+                        at: new Date().toISOString()
+                    }];
+                }
+
+                // Reset gift status for new event
+                guest.giftGiven = false;
+                guest.giftDescription = '';
+
+                importedGuests.push(guest);
+            });
+        }
+
+        if (importHosts && hostsSnap.exists()) {
+            hostsSnap.forEach((child) => {
+                const host = { ...child.val() };
+                delete host.firebaseKey;
+
+                // Check if host already exists in target event
+                const existingHost = hosts.find(h => h.name.toLowerCase() === host.name.toLowerCase());
+                if (!existingHost) {
+                    importedHosts.push(host);
+                }
+            });
+        }
+
+        // Import hosts first
+        for (const host of importedHosts) {
+            await hostsRef.push(host);
+        }
+
+        // Import guests
+        for (const guest of importedGuests) {
+            await guestsRef.push(guest);
+        }
+
+        showToast(`Imported ${importedGuests.length} guests and ${importedHosts.length} hosts!`, 'success');
+        closeModal('importGuestsModal');
+    } catch (e) {
+        console.error('Import error:', e);
+        showToast('Failed to import guests', 'error');
+    }
+}
+
+// ==================== CONTACT PICKER ====================
+
+function setupContactPicker() {
+    // Check if Contact Picker API is supported
+    if ('contacts' in navigator && 'ContactsManager' in window) {
+        const btn = document.getElementById('contactPickerBtn');
+        if (btn) btn.style.display = 'flex';
+    }
+}
+
+async function pickContact() {
+    if (!('contacts' in navigator)) {
+        showToast('Contact picker not supported on this device', 'error');
+        return;
+    }
+
+    try {
+        const props = ['tel'];
+        const opts = { multiple: false };
+
+        const contacts = await navigator.contacts.select(props, opts);
+
+        if (contacts.length > 0 && contacts[0].tel && contacts[0].tel.length > 0) {
+            let phone = contacts[0].tel[0];
+
+            // Clean the phone number - remove spaces, dashes, country code
+            phone = phone.replace(/[\s\-\(\)]/g, '');
+
+            // Remove country code if present
+            if (phone.startsWith('+91')) {
+                phone = phone.substring(3);
+            } else if (phone.startsWith('91') && phone.length > 10) {
+                phone = phone.substring(2);
+            } else if (phone.startsWith('+')) {
+                phone = phone.substring(1);
+                if (phone.length > 10) {
+                    phone = phone.substring(phone.length - 10);
+                }
+            }
+
+            // Take last 10 digits
+            if (phone.length > 10) {
+                phone = phone.substring(phone.length - 10);
+            }
+
+            document.getElementById('whatsapp').value = phone;
+            showToast('Contact selected!', 'success');
+        }
+    } catch (e) {
+        if (e.name !== 'InvalidStateError') {
+            console.error('Contact picker error:', e);
+            showToast('Could not access contacts', 'error');
+        }
     }
 }
