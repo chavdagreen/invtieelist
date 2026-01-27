@@ -22,13 +22,6 @@
 </head>
 <body>
     <div class="app-layout">
-        <!-- Login Overlay -->
-        <h2>Sign in to continue</h2>
-                <p>Create multiple events and manage invitees securely.</p>
-                <button class="btn btn-primary btn-google" onclick="loginWithGoogle()">🔐 Sign in with Google</button>
-            </div>
-        </div>
-
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-logo">InviteePro</div>
@@ -61,7 +54,7 @@
                 <header class="header">
                     <div class="header-title">
                         <h1 id="eventTitle">InviteePro</h1>
-                        <p id="eventSubtitle">Sign in to create events and manage invitees.</p>
+                        <p id="eventSubtitle">Create multiple events and manage invitees.</p>
                         <div class="event-toolbar">
                             <select id="eventSelect" class="select">
                                 <option value="">Select Event</option>
@@ -459,6 +452,14 @@
                 <div class="backup-section">
                     <h3>&#128190; Backup Data</h3>
                     <p>Download your guest list as a JSON file for safekeeping.</p>
+                    
+                    <div class="form-group" style="margin-top:12px;">
+                        <label>Backup Scope</label>
+                        <select id="backupScope" class="select">
+                            <option value="current">Current Event</option>
+                            <option value="all">All Events</option>
+                        </select>
+                    </div>
                     <button class="btn btn-primary" onclick="downloadBackup()">
                         <span>&#128190;</span> Download Backup
                     </button>
@@ -532,6 +533,22 @@
                     <label>Event Name</label>
                     <input type="text" id="newEventName" placeholder="e.g., Wedding Reception, Birthday, Seminar">
                 </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Event Date (optional)</label>
+                        <input type="date" id="newEventDate">
+                    </div>
+                    <div class="form-group">
+                        <label>Venue (optional)</label>
+                        <input type="text" id="newEventVenue" placeholder="e.g., Home, Party Plot, Hall">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>WhatsApp Message Template (optional)</label>
+                    <textarea id="newEventWhatsappTemplate" rows="3" placeholder="Hi {name}, you are invited to {event} on {date} at {venue}. Please confirm."></textarea>
+                    <p class="helper-text">Use placeholders: {name}, {event}, {date}, {venue}</p>
+                </div>
+    
                 <button class="btn btn-primary" style="width:100%;" onclick="createEvent()">Create Event</button>
             </div>
         </div>
