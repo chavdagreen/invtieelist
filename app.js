@@ -38,6 +38,32 @@ document.addEventListener('DOMContentLoaded', function() {
     showSyncStatus();
     initEvents();
 });
+// ==================== AUTH + EVENTS ====================
+
+function getGuestsStorageKey() {
+    const uid = "public";
+    const eid = currentEventId || 'noevent';
+    return `${STORAGE_KEY_BASE}_${eid}`;
+}
+
+function getHostsStorageKey() {
+    const uid = "public";
+    const eid = currentEventId || 'noevent';
+    return `${HOSTS_STORAGE_KEY_BASE}_${eid}`;
+}
+
+function getSelectedEventKey() {
+    const uid = "public";
+    return `${EVENT_STORAGE_KEY_BASE}`;
+}
+
+
+
+
+
+
+
+// ==================== EVENTS (NO LOGIN) ====================
 
 function initEvents() {
     eventsRef = database.ref('events');
@@ -48,7 +74,6 @@ function renderEventDashboard(events) {
     const container = document.getElementById('eventCards');
     const hint = document.getElementById('noEventsHint');
     if (!container) return;
-
     container.innerHTML = '';
     if (!events || events.length === 0) {
         if (hint) hint.style.display = 'block';
@@ -58,10 +83,8 @@ function renderEventDashboard(events) {
 
     events.forEach(ev => {
         const meta = ev.meta || {};
-        const stats = meta.stats || {};
-        const dateStr = meta.date ? meta.date : '';
-        const venueStr = meta.venue ? meta.venue : '';
-        const sub = [dateStr, venueStr].filter(Boolean).join(' • ') || 'Tap to open';
+        const stats = (meta.stats || {});
+        const sub = [meta.date || '', meta.venue || ''].filter(Boolean).join(' • ') || 'Tap to open';
 
         const card = document.createElement('div');
         card.className = 'event-card';
@@ -69,7 +92,6 @@ function renderEventDashboard(events) {
             const eventSelect = document.getElementById('eventSelect');
             if (eventSelect) eventSelect.value = ev.id;
             selectEvent(ev.id);
-            // Scroll to top for mobile
             window.scrollTo({ top: 0, behavior: 'smooth' });
         };
 
@@ -77,36 +99,301 @@ function renderEventDashboard(events) {
             <div class="event-card-title">${escapeHtml(meta.name || 'Untitled Event')}</div>
             <div class="event-card-sub">${escapeHtml(sub)}</div>
             <div class="event-card-stats">
-                <span class="event-pill">&#128101; Families: ${stats.totalFamilies || 0}</span>
-                <span class="event-pill">&#127881; Guests: ${stats.totalGuests || 0}</span>
-                <span class="event-pill">&#9989; Confirmed: ${stats.confirmed || 0}</span>
+                <span class="event-pill">👥 Families: ${stats.totalFamilies || 0}</span>
+                <span class="event-pill">🎉 Guests: ${stats.totalGuests || 0}</span>
+                <span class="event-pill">✅ Confirmed: ${stats.confirmed || 0}</span>
             </div>
         `;
         container.appendChild(card);
     });
 }
 
-async function updateEventMetaStats() {
-    if (!currentEventId || !eventsRef) return;
-    const stats = {
-        totalFamilies: guests.length,
-        totalGuests: guests.reduce((sum, g) => sum + (parseInt(g.members) || 0), 0),
-        confirmed: guests.filter(g => g.rsvpStatus === 'Confirmed').length,
-        pending: guests.filter(g => g.rsvpStatus === 'Pending').length,
-        declined: guests.filter(g => g.rsvpStatus === 'Declined').length
-    };
-    try {
-        await eventsRef.child(`${currentEventId}/meta`).update({
-            updatedAt: new Date().toISOString(),
-        statusHistory: (existingGuest && Array.isArray(existingGuest.statusHistory)) ? existingGuest.statusHistory : [],
-            stats
+async function loadEventsAndRestoreSelection() {
+        eventsRef = database.ref(`events`);
+
+    // Populate dropdown
+    const snapshot = await eventsRef.get().catch((e) => {
+        console.error('Events load error:', e);
+        showToast('Unable to load events', 'error');
+        return null;
+    });
+
+    const eventSelect = document.getElementById('eventSelect');
+    if (!eventSelect) return;
+
+    eventSelect.innerHTML = '<option value="">Select Event</option>';
+
+    if (snapshot && snapshot.exists()) {
+        snapshot.forEach(child => {
+            const meta = child.child('meta').val() || {};
+            const name = meta.name || 'Untitled Event';
+            eventSelect.innerHTML += `<option value="${child.key}">${name}</option>`;
         });
-    } catch (e) {
-        // ignore when offline
+    }
+
+    // Restore last selected event (per user)
+    const savedEventId = localStorage.getItem(getSelectedEventKey());
+    if (savedEventId) {
+        eventSelect.value = savedEventId;
+    }
+
+    // If still empty but there are events, select the first event
+    if (!eventSelect.value && snapshot && snapshot.exists()) {
+        let firstKey = null;
+        snapshot.forEach(child => {
+            if (!firstKey) firstKey = child.key;
+        });
+        if (firstKey) eventSelect.value = firstKey;
+    }
+
+    // Trigger selection handling
+    if (eventSelect.value) {
+        await selectEvent(eventSelect.value);
+    } else {
+        updateEventUI(null, null);
+        guests = [];
+        hosts = [];
+        renderGuestTable();
+        updateDashboard();
+        renderHostDropdowns();
+        renderHostList();
+        const addGuestBtn = document.getElementById('addGuestBtn');
+        if (addGuestBtn) addGuestBtn.style.display = 'none';
+    }
+
+    // Build list for dashboard cards
+    const eventsList = [];
+    if (snapshot && snapshot.exists()) {
+        snapshot.forEach(child => {
+            eventsList.push({ id: child.key, meta: child.child('meta').val() || {} });
+        });
+    }
+    renderEventDashboard(eventsList);
+
+}
+
+function updateEventUI(eventId, eventName) {
+    const eventTitle = document.getElementById('eventTitle');
+    const eventSubtitle = document.getElementById('eventSubtitle');
+    if (eventTitle) eventTitle.textContent = eventName ? eventName : 'InviteePro';
+    if (eventSubtitle) eventSubtitle.textContent = eventName ? 'Manage your invitees for this event.' : 'Create or select an event to start.';
+}
+
+function openEventModal() {
+    openModal('eventModal');
+    const input = document.getElementById('newEventName');
+    if (input) {
+        input.value = '';
+        setTimeout(() => input.focus(), 50);
     }
 }
 
-// ==================== EVENTS ==================== HOST MANAGEMENT ====================
+async 
+async function createEvent() {
+    const nameEl = document.getElementById('newEventName');
+    const dateEl = document.getElementById('newEventDate');
+    const venueEl = document.getElementById('newEventVenue');
+    const tplEl = document.getElementById('newEventWhatsappTemplate');
+
+    const name = (nameEl ? nameEl.value : '').trim();
+    const date = (dateEl ? dateEl.value : '').trim();
+    const venue = (venueEl ? venueEl.value : '').trim();
+    const whatsappTemplate = (tplEl ? tplEl.value : '').trim();
+
+    if (!name) {
+        showToast('Please enter an event name', 'error');
+        return;
+    }
+
+    const newRef = eventsRef.push();
+    const now = new Date().toISOString();
+
+    await newRef.child('meta').set({
+        name,
+        date: date || null,
+        venue: venue || null,
+        whatsappTemplate: whatsappTemplate || null,
+        createdAt: now,
+        updatedAt: now,
+        stats: { totalFamilies: 0, totalGuests: 0, confirmed: 0, pending: 0, declined: 0 }
+    });
+
+    if (nameEl) nameEl.value = '';
+    if (dateEl) dateEl.value = '';
+    if (venueEl) venueEl.value = '';
+    if (tplEl) tplEl.value = '';
+
+    closeModal('eventModal');
+    showToast('Event created', 'success');
+    await loadEventsAndRestoreSelection();
+
+    const eventSelect = document.getElementById('eventSelect');
+    if (eventSelect) eventSelect.value = newRef.key;
+    await selectEvent(newRef.key);
+}
+
+
+async function selectEvent(eventId) {
+    if (!currentUser || !eventId) return;
+
+    currentEventId = eventId;
+
+    const metaSnap = await database.ref(`users/${currentUser.uid}/events/${eventId}/meta`).get();
+    const meta = metaSnap.exists() ? metaSnap.val() : {};
+    currentEventName = meta.name || 'Event';
+
+    localStorage.setItem(getSelectedEventKey(), eventId);
+    updateEventUI(eventId, currentEventName);
+
+    // Setup scoped refs
+    guestsRef = database.ref(`events/${eventId}/guests`);
+    hostsRef = database.ref(`events/${eventId}/hosts`);
+
+    detachEventListeners();
+    setupFirebaseListeners();
+
+    const addGuestBtn = document.getElementById('addGuestBtn');
+    if (addGuestBtn) addGuestBtn.style.display = 'inline-flex';
+}
+
+
+
+// Setup Firebase Real-time Listeners
+function setupFirebaseListeners() {
+    if (!guestsRef || !hostsRef) return;
+
+    // Listen for guests data changes
+    guestsRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            guests = Object.keys(data).map(key => ({
+                ...data[key],
+                firebaseKey: key
+            }));
+        } else {
+            guests = [];
+        }
+        localStorage.setItem(getGuestsStorageKey(), JSON.stringify(guests));
+        renderGuestTable();
+        updateDashboard();
+    }, (error) => {
+        console.error('Firebase guests read error:', error);
+        loadGuestsFromLocalStorage();
+    });
+
+    // Listen for hosts data changes
+    hostsRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            hosts = Object.keys(data).map(key => ({
+                ...data[key],
+                firebaseKey: key
+            }));
+        } else {
+            hosts = [];
+        }
+        localStorage.setItem(getHostsStorageKey(), JSON.stringify(hosts));
+        renderHostDropdowns();
+        renderHostList();
+    }, (error) => {
+        console.error('Firebase hosts read error:', error);
+        loadHostsFromLocalStorage();
+    });
+}
+
+// Load from localStorage (fallback)
+function loadGuestsFromLocalStorage() {
+    const stored = localStorage.getItem(getGuestsStorageKey());
+    guests = stored ? JSON.parse(stored) : [];
+    renderGuestTable();
+    updateDashboard();
+}
+
+function loadHostsFromLocalStorage() {
+    const stored = localStorage.getItem(getHostsStorageKey());
+    hosts = stored ? JSON.parse(stored) : [];
+    renderHostDropdowns();
+    renderHostList();
+}
+
+// Setup Online/Offline Status
+function setupOnlineStatusListeners() {
+    window.addEventListener('online', () => {
+        isOnline = true;
+        showSyncStatus();
+        showToast('Back online - syncing data...', 'success');
+    });
+
+    window.addEventListener('offline', () => {
+        isOnline = false;
+        showSyncStatus();
+        showToast('You are offline - changes saved locally', 'error');
+    });
+}
+
+// Show sync status in UI
+function showSyncStatus() {
+    const logo = document.querySelector('.sidebar-logo');
+    if (logo) {
+        logo.innerHTML = isOnline ?
+            'InviteePro <span style="font-size:0.6em;opacity:0.7;">&#9679; Synced</span>' :
+            'InviteePro <span style="font-size:0.6em;color:#ef4444;">&#9679; Offline</span>';
+    }
+}
+
+// Setup Event Listeners
+function setupEventListeners() {
+    document.getElementById('searchInput').addEventListener('input', filterAndRenderTable);
+    document.getElementById('filterRsvp').addEventListener('change', filterAndRenderTable);
+    document.getElementById('filterFood').addEventListener('change', filterAndRenderTable);
+    document.getElementById('filterHost').addEventListener('change', filterAndRenderTable);
+
+
+    const eventSelect = document.getElementById('eventSelect');
+    if (eventSelect) {
+        eventSelect.addEventListener('change', async (e) => {
+            const eventId = e.target.value;
+
+            if (!eventId) {
+                currentEventId = null;
+                currentEventName = null;
+                detachEventListeners();
+                updateEventUI(null, null);
+                guests = [];
+                hosts = [];
+                renderGuestTable();
+                updateDashboard();
+                renderHostDropdowns();
+                renderHostList();
+
+                const addGuestBtn = document.getElementById('addGuestBtn');
+                if (addGuestBtn) addGuestBtn.style.display = 'none';
+                return;
+            }
+
+            await selectEvent(eventId);
+        });
+    }
+
+
+    document.querySelectorAll('.modal').forEach(modal => {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeModal(this.id);
+            }
+        });
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal.show').forEach(modal => {
+                closeModal(modal.id);
+            });
+        }
+    });
+}
+
+// ==================== HOST MANAGEMENT ====================
 
 function renderHostDropdowns() {
     const relativeOfSelect = document.getElementById('relativeOf');
@@ -296,7 +583,6 @@ function openAddModal() {
     document.getElementById('giftDescGroup').style.display = 'none';
     document.getElementById('foodPref').value = 'Regular'; // Default
     renderHostDropdowns();
-    renderStatusTimeline(null);
     openModal('guestModal');
 }
 
@@ -319,7 +605,6 @@ function openEditModal(id) {
 
     toggleGiftDescription();
     renderHostDropdowns();
-    renderStatusTimeline(guest);
     openModal('guestModal');
 }
 
@@ -365,24 +650,8 @@ function saveGuest(event) {
         giftDescription: document.getElementById('giftDescription').value.trim(),
         notes: document.getElementById('notes').value.trim(),
         createdAt: existingGuest?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        statusHistory: (existingGuest && Array.isArray(existingGuest.statusHistory)) ? existingGuest.statusHistory : []
+        updatedAt: new Date().toISOString()
     };
-
-    // Timeline: add entry when RSVP status changes
-    if (existingGuest && existingGuest.rsvpStatus !== guestData.rsvpStatus) {
-        guestData.statusHistory.push({
-            from: existingGuest.rsvpStatus || 'Unknown',
-            to: guestData.rsvpStatus || 'Unknown',
-            at: new Date().toISOString()
-        });
-    } else if (!existingGuest && guestData.rsvpStatus) {
-        guestData.statusHistory.push({
-            from: null,
-            to: guestData.rsvpStatus,
-            at: new Date().toISOString()
-        });
-    }
 
     if (existingGuest?.firebaseKey) {
         guestData.firebaseKey = existingGuest.firebaseKey;
@@ -487,7 +756,9 @@ function renderGuestTable() {
             <td><span class="relative-badge">${guest.relativeOf || '-'}</span></td>
             <td>${guest.members}</td>
             <td>
-                <a href="javascript:void(0)" class="whatsapp-btn" onclick="sendWhatsappInvite('${guest.whatsapp}','${(guest.firstName||'').replace(/'/g,"\'")} ${ (guest.surname||'').replace(/'/g,"\'") }'.trim())">&#128172; WhatsApp</a>
+                <a href="https://wa.me/91${guest.whatsapp}" target="_blank" class="whatsapp-link">
+                    +91 ${formatPhone(guest.whatsapp)}
+                </a>
             </td>
             <td><span class="badge badge-${(guest.foodPref || 'Regular').toLowerCase()}">${guest.foodPref || 'Regular'}</span></td>
             <td><span class="badge badge-${guest.rsvpStatus.toLowerCase()}">${guest.rsvpStatus}</span></td>
@@ -568,8 +839,6 @@ function updateDashboard() {
     document.getElementById('statusDeclined').textContent = stats.declined;
 
     document.getElementById('giftsCount').textContent = stats.gifts;
-
-    // Persist quick stats for Event Dashboard
     updateEventMetaStats();
 }
 
@@ -765,10 +1034,6 @@ function exportStickerList() {
 // ==================== BACKUP & RESTORE ====================
 
 function downloadBackup() {
-    const scopeEl = document.getElementById('backupScope');
-    const scope = scopeEl ? scopeEl.value : 'current';
-    if (scope === 'all') { downloadAllEventsBackup(); return; }
-
     if (guests.length === 0 && hosts.length === 0) {
         showToast('No data to backup', 'error');
         return;
@@ -803,18 +1068,8 @@ function restoreBackup(event) {
             const backup = JSON.parse(e.target.result);
 
             // Support both old and new backup formats
-            // New format: backup.events[]
-            if (Array.isArray(backup.events)) {
-                await restoreAllEventsBackup(backup.events);
-                showToast(`Restored ${backup.events.length} event(s)!`, 'success');
-                closeModal('backupModal');
-                await loadEventsAndRestoreSelection();
-                return;
-            }
-
             const guestsData = backup.guests || backup.data || [];
             const hostsData = backup.hosts || [];
-
 
             if (!Array.isArray(guestsData)) {
                 throw new Error('Invalid backup file format');
@@ -875,6 +1130,43 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
+async function updateEventMetaStats() {
+    if (!currentEventId || !eventsRef) return;
+    const stats = {
+        totalFamilies: guests.length,
+        totalGuests: guests.reduce((s,g)=> s + (parseInt(g.members)||0), 0),
+        confirmed: guests.filter(g => g.rsvpStatus === 'Confirmed').length,
+        pending: guests.filter(g => g.rsvpStatus === 'Pending').length,
+        declined: guests.filter(g => g.rsvpStatus === 'Declined').length
+    };
+    try {
+        await eventsRef.child(`${currentEventId}/meta`).update({ updatedAt: new Date().toISOString(), stats });
+    } catch(e) {}
+}
+
+function normalizePhone(phone) {
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (digits.length === 10) return '91' + digits;
+    return digits;
+}
+
+function sendWhatsappInvite(phone, guestName) {
+    if (!phone) return;
+    const clean = normalizePhone(phone);
+    const titleEl = document.getElementById('eventTitle');
+    const date = titleEl ? (titleEl.dataset.eventDate || '') : '';
+    const venue = titleEl ? (titleEl.dataset.eventVenue || '') : '';
+    const template = titleEl ? (titleEl.dataset.eventWhatsappTemplate || '') : '';
+
+    const defaultMsg = `Hi ${guestName || ''}! You are invited to ${currentEventName || 'our event'}${date ? ' on ' + date : ''}${venue ? ' at ' + venue : ''}. Please confirm your presence.`;
+    const msg = (template || defaultMsg)
+        .replaceAll('{name}', guestName || '')
+        .replaceAll('{event}', currentEventName || 'our event')
+        .replaceAll('{date}', date || '')
+        .replaceAll('{venue}', venue || '');
+
+    window.open(`https://wa.me/${clean}?text=${encodeURIComponent(msg)}`, '_blank');
+}
 
 function renderStatusTimeline(guest) {
     const box = document.getElementById('statusTimeline');
@@ -896,73 +1188,4 @@ function renderStatusTimeline(guest) {
             </div>
         </div>`;
     }).join('');
-}
-
-function normalizePhone(phone) {
-    const digits = String(phone || '').replace(/\D/g, '');
-    // If 10 digits assume India +91
-    if (digits.length === 10) return '91' + digits;
-    // If already includes country code
-    return digits;
-}
-
-async function downloadAllEventsBackup() {
-    try {
-        const snap = await eventsRef.get();
-        const payload = { version: '3.0', exportDate: new Date().toISOString(), events: [] };
-
-        if (snap.exists()) {
-            const promises = [];
-            snap.forEach(child => {
-                const eventId = child.key;
-                const meta = child.child('meta').val() || {};
-                promises.push(
-                    Promise.all([
-                        database.ref(`events/${eventId}/guests`).get(),
-                        database.ref(`events/${eventId}/hosts`).get()
-                    ]).then(([gs, hs]) => {
-                        const guestsArr = [];
-                        const hostsArr = [];
-                        if (gs.exists()) gs.forEach(x => guestsArr.push(x.val()));
-                        if (hs.exists()) hs.forEach(x => hostsArr.push(x.val()));
-                        payload.events.push({ id: eventId, meta, guests: guestsArr, hosts: hostsArr });
-                    })
-                );
-            });
-            await Promise.all(promises);
-        }
-
-        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Invitee_AllEvents_Backup_${getDateString()}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-
-        showToast('All events backup downloaded!', 'success');
-        closeModal('backupModal');
-    } catch (e) {
-        console.error(e);
-        showToast('Backup failed (offline?)', 'error');
-    }
-}
-
-async function restoreAllEventsBackup(eventsArr) {
-    if (!Array.isArray(eventsArr)) throw new Error('Invalid events backup');
-    // Warning: This replaces ALL events
-    await eventsRef.remove();
-
-    // Recreate events and their data
-    for (const ev of eventsArr) {
-        const id = ev.id || eventsRef.push().key;
-        await eventsRef.child(`${id}/meta`).set(ev.meta || { name: 'Restored Event' });
-        const gRef = database.ref(`events/${id}/guests`);
-        const hRef = database.ref(`events/${id}/hosts`);
-        const guestsArr = Array.isArray(ev.guests) ? ev.guests : [];
-        const hostsArr = Array.isArray(ev.hosts) ? ev.hosts : [];
-        await gRef.remove(); await hRef.remove();
-        for (const g of guestsArr) { const copy = { ...g }; delete copy.firebaseKey; await gRef.push(copy); }
-        for (const h of hostsArr) { const copy = { ...h }; delete copy.firebaseKey; await hRef.push(copy); }
-    }
 }
