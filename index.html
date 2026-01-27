@@ -53,7 +53,10 @@
                 <!-- Header -->
                 <header class="header">
                     <div class="header-title">
-                        <h1 id="eventTitle">InviteePro</h1>
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+  <h1 id="eventTitle">InviteePro</h1>
+  <button class="btn btn-secondary" id="editEventBtn" onclick="openEditEventModal()" title="Edit Event">✏️ Edit</button>
+</div>
                         <p id="eventSubtitle">Create multiple events and manage invitees.</p>
                         <div class="event-toolbar">
                             <select id="eventSelect" class="select">
@@ -525,10 +528,11 @@
     <div class="modal" id="eventModal">
         <div class="modal-content modal-small">
             <div class="modal-header">
-                <h2>Create New Event</h2>
+                <h2>Event Details</h2>
                 <button class="modal-close" onclick="closeModal('eventModal')">&times;</button>
             </div>
             <div class="modal-body">
+<p class="helper-text" id="eventModalHint">Create a new event or edit the selected event.</p>
                 <div class="form-group">
                     <label>Event Name</label>
                     <input type="text" id="newEventName" placeholder="e.g., Wedding Reception, Birthday, Seminar">
@@ -549,7 +553,7 @@
                     <p class="helper-text">Use placeholders: {name}, {event}, {date}, {venue}</p>
                 </div>
     
-                <button class="btn btn-primary" style="width:100%;" onclick="createEvent()">Create Event</button>
+                <button class="btn btn-primary" style="width:100%;" onclick="saveEventMeta()">Create Event</button>
             </div>
         </div>
     </div>

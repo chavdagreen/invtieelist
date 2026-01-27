@@ -1501,3 +1501,5 @@ form {
   color: #0f5132;
   text-decoration:none;
 }
+
+#editEventBtn{padding:10px 12px;border-radius:999px}
