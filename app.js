@@ -1,19 +1,98 @@
-// Invitee List Application - Main JavaScript
+// Invitee List Application - Main JavaScript with Firebase Cloud Sync
 
-// Data Storage Key
+// Firebase Configuration
+const firebaseConfig = {
+    apiKey: "AIzaSyCQXnnmQD_BY7b3lAxcwRPwwF6-kFBe-Kg",
+    authDomain: "invitee-list-fb893.firebaseapp.com",
+    databaseURL: "https://invitee-list-fb893-default-rtdb.firebaseio.com",
+    projectId: "invitee-list-fb893",
+    storageBucket: "invitee-list-fb893.firebasestorage.app",
+    messagingSenderId: "349634934290",
+    appId: "1:349634934290:web:7bed0b8525c95f84c34acb"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+const guestsRef = database.ref('guests');
+
+// Data Storage Key (for local backup)
 const STORAGE_KEY = 'housewarmingInvitees';
 
 // Global Variables
 let guests = [];
 let deleteTargetId = null;
+let isOnline = navigator.onLine;
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', function() {
-    loadGuests();
+    setupFirebaseListeners();
+    setupEventListeners();
+    setupOnlineStatusListeners();
+    showSyncStatus();
+});
+
+// Setup Firebase Real-time Listeners
+function setupFirebaseListeners() {
+    // Listen for data changes in real-time
+    guestsRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            guests = Object.keys(data).map(key => ({
+                ...data[key],
+                firebaseKey: key
+            }));
+        } else {
+            guests = [];
+        }
+
+        // Also save to localStorage as backup
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(guests));
+
+        renderGuestTable();
+        updateDashboard();
+        showToast('Data synced from cloud', 'success');
+    }, (error) => {
+        console.error('Firebase read error:', error);
+        // Fallback to localStorage
+        loadGuestsFromLocalStorage();
+        showToast('Offline mode - using local data', 'error');
+    });
+}
+
+// Load from localStorage (fallback)
+function loadGuestsFromLocalStorage() {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    guests = stored ? JSON.parse(stored) : [];
     renderGuestTable();
     updateDashboard();
-    setupEventListeners();
-});
+}
+
+// Setup Online/Offline Status
+function setupOnlineStatusListeners() {
+    window.addEventListener('online', () => {
+        isOnline = true;
+        showSyncStatus();
+        showToast('Back online - syncing data...', 'success');
+    });
+
+    window.addEventListener('offline', () => {
+        isOnline = false;
+        showSyncStatus();
+        showToast('You are offline - changes saved locally', 'error');
+    });
+}
+
+// Show sync status in UI
+function showSyncStatus() {
+    // Update sidebar or header to show sync status
+    const logo = document.querySelector('.sidebar-logo');
+    if (logo) {
+        logo.innerHTML = isOnline ?
+            'InviteePro <span style="font-size:0.6em;opacity:0.7;">&#9679; Synced</span>' :
+            'InviteePro <span style="font-size:0.6em;color:#ef4444;">&#9679; Offline</span>';
+    }
+}
 
 // Setup Event Listeners
 function setupEventListeners() {
@@ -43,14 +122,26 @@ function setupEventListeners() {
     });
 }
 
-// Local Storage Operations
-function loadGuests() {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    guests = stored ? JSON.parse(stored) : [];
+// Save to Firebase (and localStorage as backup)
+function saveGuests() {
+    // Save to localStorage as backup
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(guests));
 }
 
-function saveGuests() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(guests));
+// Save single guest to Firebase
+function saveGuestToFirebase(guestData) {
+    if (guestData.firebaseKey) {
+        // Update existing
+        return guestsRef.child(guestData.firebaseKey).set(guestData);
+    } else {
+        // Add new
+        return guestsRef.push(guestData);
+    }
+}
+
+// Delete guest from Firebase
+function deleteGuestFromFirebase(firebaseKey) {
+    return guestsRef.child(firebaseKey).remove();
 }
 
 // Generate Unique ID
@@ -116,6 +207,8 @@ function saveGuest(event) {
     event.preventDefault();
 
     const id = document.getElementById('guestId').value;
+    const existingGuest = id ? guests.find(g => g.id === id) : null;
+
     const guestData = {
         id: id || generateId(),
         firstName: document.getElementById('firstName').value.trim(),
@@ -127,9 +220,14 @@ function saveGuest(event) {
         giftGiven: document.getElementById('giftGiven').checked,
         giftDescription: document.getElementById('giftDescription').value.trim(),
         notes: document.getElementById('notes').value.trim(),
-        createdAt: id ? guests.find(g => g.id === id)?.createdAt : new Date().toISOString(),
+        createdAt: existingGuest?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
     };
+
+    // Keep firebase key if editing
+    if (existingGuest?.firebaseKey) {
+        guestData.firebaseKey = existingGuest.firebaseKey;
+    }
 
     // Validate phone number
     if (!/^\d{10}$/.test(guestData.whatsapp)) {
@@ -137,23 +235,27 @@ function saveGuest(event) {
         return;
     }
 
-    if (id) {
-        // Update existing guest
-        const index = guests.findIndex(g => g.id === id);
-        if (index !== -1) {
-            guests[index] = guestData;
-        }
-        showToast('Guest updated successfully!', 'success');
-    } else {
-        // Add new guest
-        guests.push(guestData);
-        showToast('Guest added successfully!', 'success');
-    }
-
-    saveGuests();
-    renderGuestTable();
-    updateDashboard();
-    closeModal('guestModal');
+    // Save to Firebase
+    saveGuestToFirebase(guestData)
+        .then(() => {
+            showToast(id ? 'Guest updated successfully!' : 'Guest added successfully!', 'success');
+            closeModal('guestModal');
+        })
+        .catch((error) => {
+            console.error('Firebase save error:', error);
+            // Fallback: save locally
+            if (id) {
+                const index = guests.findIndex(g => g.id === id);
+                if (index !== -1) guests[index] = guestData;
+            } else {
+                guests.push(guestData);
+            }
+            saveGuests();
+            renderGuestTable();
+            updateDashboard();
+            showToast('Saved locally (offline mode)', 'success');
+            closeModal('guestModal');
+        });
 }
 
 // Delete Guest
@@ -169,13 +271,38 @@ function deleteGuest(id) {
 function confirmDelete() {
     if (!deleteTargetId) return;
 
-    guests = guests.filter(g => g.id !== deleteTargetId);
-    saveGuests();
-    renderGuestTable();
-    updateDashboard();
-    closeModal('deleteModal');
-    showToast('Guest deleted successfully!', 'success');
-    deleteTargetId = null;
+    const guest = guests.find(g => g.id === deleteTargetId);
+    if (!guest) return;
+
+    if (guest.firebaseKey) {
+        // Delete from Firebase
+        deleteGuestFromFirebase(guest.firebaseKey)
+            .then(() => {
+                showToast('Guest deleted successfully!', 'success');
+                closeModal('deleteModal');
+                deleteTargetId = null;
+            })
+            .catch((error) => {
+                console.error('Firebase delete error:', error);
+                // Fallback: delete locally
+                guests = guests.filter(g => g.id !== deleteTargetId);
+                saveGuests();
+                renderGuestTable();
+                updateDashboard();
+                showToast('Deleted locally (offline mode)', 'success');
+                closeModal('deleteModal');
+                deleteTargetId = null;
+            });
+    } else {
+        // Delete locally only
+        guests = guests.filter(g => g.id !== deleteTargetId);
+        saveGuests();
+        renderGuestTable();
+        updateDashboard();
+        showToast('Guest deleted successfully!', 'success');
+        closeModal('deleteModal');
+        deleteTargetId = null;
+    }
 }
 
 // Render Guest Table
@@ -540,13 +667,30 @@ function restoreBackup(event) {
                 throw new Error('Invalid backup file format');
             }
 
-            guests = backup.data;
-            saveGuests();
-            renderGuestTable();
-            updateDashboard();
+            // Clear existing Firebase data and upload backup
+            guestsRef.remove().then(() => {
+                // Upload each guest to Firebase
+                const promises = backup.data.map(guest => {
+                    // Remove old firebase key if exists
+                    delete guest.firebaseKey;
+                    return guestsRef.push(guest);
+                });
 
-            showToast(`Restored ${guests.length} guests from backup!`, 'success');
-            closeModal('backupModal');
+                return Promise.all(promises);
+            }).then(() => {
+                showToast(`Restored ${backup.data.length} guests to cloud!`, 'success');
+                closeModal('backupModal');
+            }).catch((error) => {
+                console.error('Firebase restore error:', error);
+                // Fallback: restore locally
+                guests = backup.data;
+                saveGuests();
+                renderGuestTable();
+                updateDashboard();
+                showToast(`Restored ${guests.length} guests locally!`, 'success');
+                closeModal('backupModal');
+            });
+
         } catch (error) {
             showToast('Failed to restore: Invalid backup file', 'error');
         }
