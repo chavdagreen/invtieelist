@@ -19,8 +19,50 @@
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 </head>
 <body>
+    <!-- Login Overlay -->
+    <div class="login-overlay" id="loginOverlay">
+        <div class="login-card">
+            <div class="login-logo">InviteePro</div>
+            <h2>Welcome</h2>
+            <p>Sign in to manage your event invitations</p>
+
+            <div id="loginForm">
+                <button class="btn btn-primary btn-google" onclick="signInWithGoogle()" style="width:100%; margin-bottom: 16px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                    Sign in with Google
+                </button>
+
+                <div class="divider-text">or sign in with email</div>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <input type="email" id="loginEmail" placeholder="Email address" style="width: 100%;">
+                </div>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <input type="password" id="loginPassword" placeholder="Password" style="width: 100%;">
+                </div>
+                <button class="btn btn-primary" onclick="signInWithEmail()" style="width:100%; margin-bottom: 12px;">Sign In</button>
+                <button class="btn btn-outline" onclick="showSignupForm()" style="width:100%;">Create Account</button>
+            </div>
+
+            <div id="signupForm" style="display: none;">
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <input type="text" id="signupName" placeholder="Your Name" style="width: 100%;">
+                </div>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <input type="email" id="signupEmail" placeholder="Email address" style="width: 100%;">
+                </div>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <input type="password" id="signupPassword" placeholder="Password (min 6 characters)" style="width: 100%;">
+                </div>
+                <button class="btn btn-primary" onclick="signUpWithEmail()" style="width:100%; margin-bottom: 12px;">Create Account</button>
+                <button class="btn btn-outline" onclick="showLoginForm()" style="width:100%;">Back to Sign In</button>
+            </div>
+        </div>
+    </div>
+
     <div class="app-layout">
         <!-- Sidebar -->
         <aside class="sidebar">
@@ -31,6 +73,12 @@
                 </div>
                 <div class="nav-item" onclick="document.getElementById('guestTable').scrollIntoView({behavior: 'smooth'})">
                     <span>&#128101;</span> Guest List
+                </div>
+                <div class="nav-item" onclick="openWhatsappTemplateModal()">
+                    <span>&#128172;</span> WhatsApp
+                </div>
+                <div class="nav-item" onclick="openImportGuestsModal()">
+                    <span>&#128229;</span> Import Guests
                 </div>
                 <div class="nav-item" onclick="openExportModal()">
                     <span>&#128196;</span> Export
@@ -69,9 +117,10 @@
                         <div class="user-pill" id="userPill" style="display:none;">
                             <span class="user-avatar" id="userAvatar">👤</span>
                             <span class="user-name" id="userName">User</span>
+                            <button class="btn-logout" onclick="signOutUser()" title="Sign Out">&#9211;</button>
                         </div>
 
-<button class="btn btn-primary" id="addGuestBtn" onclick="openAddModal()" style="display:none;">
+                        <button class="btn btn-primary" id="addGuestBtn" onclick="openAddModal()" style="display:none;">
                             <span>+</span> Add Guest
                         </button>
                     </div>
@@ -194,6 +243,20 @@
                                     <p>Add family to the list</p>
                                 </div>
                             </div>
+                            <div class="quick-action-item" onclick="openImportGuestsModal()">
+                                <div class="quick-action-icon blue">&#128229;</div>
+                                <div class="quick-action-text">
+                                    <h4>Import Guests</h4>
+                                    <p>From your other events</p>
+                                </div>
+                            </div>
+                            <div class="quick-action-item" onclick="openWhatsappTemplateModal()">
+                                <div class="quick-action-icon green">&#128172;</div>
+                                <div class="quick-action-text">
+                                    <h4>WhatsApp Templates</h4>
+                                    <p>Send custom invitations</p>
+                                </div>
+                            </div>
                             <div class="quick-action-item" onclick="openExportModal()">
                                 <div class="quick-action-icon pink">&#128196;</div>
                                 <div class="quick-action-text">
@@ -202,14 +265,14 @@
                                 </div>
                             </div>
                             <div class="quick-action-item" onclick="copyAllWhatsappNumbers()">
-                                <div class="quick-action-icon green">&#128222;</div>
+                                <div class="quick-action-icon orange">&#128222;</div>
                                 <div class="quick-action-text">
                                     <h4>Copy All Numbers</h4>
                                     <p>For WhatsApp broadcast</p>
                                 </div>
                             </div>
                             <div class="quick-action-item" onclick="openHostModal()">
-                                <div class="quick-action-icon orange">&#128100;</div>
+                                <div class="quick-action-icon violet">&#128100;</div>
                                 <div class="quick-action-text">
                                     <h4>Manage Hosts</h4>
                                     <p>Add or edit host names</p>
@@ -321,11 +384,16 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="whatsapp">WhatsApp Number *</label>
-                        <div class="phone-input">
-                            <span class="country-code">+91</span>
-                            <input type="tel" id="whatsapp" required placeholder="9876543210"
-                                   pattern="[0-9]{10}" maxlength="10"
-                                   title="Enter 10 digit mobile number">
+                        <div class="phone-input-wrapper">
+                            <div class="phone-input">
+                                <span class="country-code">+91</span>
+                                <input type="tel" id="whatsapp" required placeholder="9876543210"
+                                       pattern="[0-9]{10}" maxlength="10"
+                                       title="Enter 10 digit mobile number">
+                            </div>
+                            <button type="button" class="btn btn-outline btn-contact-picker" id="contactPickerBtn" onclick="pickContact()" title="Pick from contacts" style="display:none;">
+                                &#128222;
+                            </button>
                         </div>
                     </div>
                     <div class="form-group">
@@ -521,6 +589,130 @@
 
     <!-- Toast Notification -->
     <div class="toast" id="toast"></div>
+
+    <!-- Import Guests Modal -->
+    <div class="modal" id="importGuestsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Import Guests from Event</h2>
+                <button class="close-btn" onclick="closeModal('importGuestsModal')">&times;</button>
+            </div>
+            <div class="import-guests-options">
+                <p class="helper-text" style="margin-bottom: 16px;">Select an event to import guests from. Only your own events are shown.</p>
+
+                <div class="form-group">
+                    <label for="importSourceEvent">Source Event</label>
+                    <select id="importSourceEvent" class="select" style="width: 100%;">
+                        <option value="">Select an event...</option>
+                    </select>
+                </div>
+
+                <div id="importPreview" style="display: none;">
+                    <div class="import-stats">
+                        <div class="import-stat-item">
+                            <span class="import-stat-icon">&#128101;</span>
+                            <span class="import-stat-value" id="importFamilyCount">0</span>
+                            <span class="import-stat-label">Families</span>
+                        </div>
+                        <div class="import-stat-item">
+                            <span class="import-stat-icon">&#127881;</span>
+                            <span class="import-stat-value" id="importGuestCount">0</span>
+                            <span class="import-stat-label">Guests</span>
+                        </div>
+                        <div class="import-stat-item">
+                            <span class="import-stat-icon">&#128100;</span>
+                            <span class="import-stat-value" id="importHostCount">0</span>
+                            <span class="import-stat-label">Hosts</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 16px;">
+                        <label>
+                            <input type="checkbox" id="importHostsToo" checked>
+                            Also import hosts from source event
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="resetRsvpStatus" checked>
+                            Reset RSVP status to "Pending" for imported guests
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn btn-outline" onclick="closeModal('importGuestsModal')">Cancel</button>
+                    <button class="btn btn-primary" id="importGuestsBtn" onclick="importGuestsFromEvent()" disabled>Import Guests</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WhatsApp Templates Modal -->
+    <div class="modal" id="whatsappTemplateModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>WhatsApp Message Templates</h2>
+                <button class="close-btn" onclick="closeModal('whatsappTemplateModal')">&times;</button>
+            </div>
+            <div class="whatsapp-template-options">
+                <p class="helper-text" style="margin-bottom: 16px;">
+                    Create message templates with variables. Use placeholders like {name}, {event}, {date}, {venue}, {members}.
+                </p>
+
+                <div class="template-list" id="templateList">
+                    <!-- Templates will be rendered here -->
+                </div>
+
+                <div class="add-template-section">
+                    <h4>Add New Template</h4>
+                    <div class="form-group">
+                        <label for="newTemplateName">Template Name</label>
+                        <input type="text" id="newTemplateName" placeholder="e.g., Wedding Invite, Reminder...">
+                    </div>
+                    <div class="form-group">
+                        <label for="newTemplateMessage">Message Template</label>
+                        <textarea id="newTemplateMessage" rows="4" placeholder="Hi {name}, you are invited to {event} on {date} at {venue}. Please confirm your attendance."></textarea>
+                        <p class="helper-text">Available: {name}, {event}, {date}, {venue}, {members}, {host}</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="addWhatsappTemplate()">Add Template</button>
+                </div>
+
+                <hr style="border: none; border-top: 2px dashed var(--border-color); margin: 24px 0;">
+
+                <div class="send-message-section">
+                    <h4>Send to Guests</h4>
+                    <div class="form-group">
+                        <label for="sendTemplateSelect">Select Template</label>
+                        <select id="sendTemplateSelect" class="select" style="width: 100%;">
+                            <option value="">Choose a template...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="sendToFilter">Send To</label>
+                        <select id="sendToFilter" class="select" style="width: 100%;">
+                            <option value="all">All Guests</option>
+                            <option value="pending">Pending RSVP Only</option>
+                            <option value="confirmed">Confirmed Only</option>
+                            <option value="declined">Declined Only</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Preview (first guest)</label>
+                        <div class="message-preview" id="messagePreview">
+                            Select a template to see preview...
+                        </div>
+                    </div>
+                    <div class="send-actions">
+                        <button class="btn btn-whatsapp" onclick="openBulkWhatsApp()">
+                            &#128172; Open WhatsApp for Each Guest
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
 
