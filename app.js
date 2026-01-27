@@ -30,6 +30,7 @@ let isOnline = navigator.onLine;
 
 let currentEventId = null;
 let currentEventName = null;
+let currentEventMeta = null;
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', function() {
@@ -42,6 +43,309 @@ document.addEventListener('DOMContentLoaded', function() {
 function initEvents() {
     eventsRef = database.ref('events');
     loadEventsAndRestoreSelection();
+}
+
+function setupEventListeners() {
+    const searchInput = document.getElementById('searchInput');
+    const filterRsvp = document.getElementById('filterRsvp');
+    const filterFood = document.getElementById('filterFood');
+    const filterHost = document.getElementById('filterHost');
+    const eventSelect = document.getElementById('eventSelect');
+
+    if (searchInput) searchInput.addEventListener('input', filterAndRenderTable);
+    if (filterRsvp) filterRsvp.addEventListener('change', filterAndRenderTable);
+    if (filterFood) filterFood.addEventListener('change', filterAndRenderTable);
+    if (filterHost) filterHost.addEventListener('change', filterAndRenderTable);
+    if (eventSelect) {
+        eventSelect.addEventListener('change', (event) => {
+            const eventId = event.target.value;
+            if (eventId) {
+                selectEvent(eventId);
+            }
+        });
+    }
+}
+
+function setupOnlineStatusListeners() {
+    window.addEventListener('online', () => {
+        isOnline = true;
+        showSyncStatus();
+    });
+    window.addEventListener('offline', () => {
+        isOnline = false;
+        showSyncStatus();
+    });
+}
+
+function showSyncStatus() {
+    document.body.dataset.sync = isOnline ? 'online' : 'offline';
+    if (!isOnline) {
+        showToast('Offline mode: saving locally', 'error');
+    }
+}
+
+function getGuestsStorageKey() {
+    return `${STORAGE_KEY_BASE}_${currentEventId || 'default'}`;
+}
+
+function getHostsStorageKey() {
+    return `${HOSTS_STORAGE_KEY_BASE}_${currentEventId || 'default'}`;
+}
+
+function getEventStorageKey() {
+    return EVENT_STORAGE_KEY_BASE;
+}
+
+function loadGuestsFromLocal() {
+    const stored = localStorage.getItem(getGuestsStorageKey());
+    try {
+        guests = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        guests = [];
+    }
+}
+
+function loadHostsFromLocal() {
+    const stored = localStorage.getItem(getHostsStorageKey());
+    try {
+        hosts = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        hosts = [];
+    }
+}
+
+function renderEventOptions(events) {
+    const eventSelect = document.getElementById('eventSelect');
+    if (!eventSelect) return;
+    eventSelect.innerHTML = '<option value="">Select Event</option>';
+    events.forEach((event) => {
+        const option = document.createElement('option');
+        option.value = event.id;
+        option.textContent = event.meta?.name || 'Untitled Event';
+        eventSelect.appendChild(option);
+    });
+}
+
+function updateEventHeader(meta) {
+    const titleEl = document.getElementById('eventTitle');
+    const subtitleEl = document.getElementById('eventSubtitle');
+    if (!titleEl || !subtitleEl) return;
+    if (!meta) {
+        titleEl.textContent = 'InviteePro';
+        subtitleEl.textContent = 'Create multiple events and manage invitees.';
+        return;
+    }
+    const date = meta.date ? new Date(meta.date).toLocaleDateString() : '';
+    const venue = meta.venue || '';
+    const parts = [date, venue].filter(Boolean).join(' • ');
+    titleEl.textContent = meta.name || 'InviteePro';
+    subtitleEl.textContent = parts || 'Manage invitees for this event.';
+}
+
+function openEventModal() {
+    const modal = document.getElementById('eventModal');
+    const hint = document.getElementById('eventModalHint');
+    const saveBtn = document.getElementById('eventSaveBtn');
+    if (modal) {
+        modal.dataset.mode = 'create';
+        modal.dataset.eventId = '';
+    }
+    if (hint) hint.textContent = 'Create a new event or edit the selected event.';
+    if (saveBtn) saveBtn.textContent = 'Create Event';
+    document.getElementById('newEventName').value = '';
+    document.getElementById('newEventDate').value = '';
+    document.getElementById('newEventVenue').value = '';
+    document.getElementById('newEventWhatsappTemplate').value = '';
+    openModal('eventModal');
+}
+
+function openEditEventModal() {
+    if (!currentEventId) {
+        showToast('Please select an event to edit', 'error');
+        return;
+    }
+    const modal = document.getElementById('eventModal');
+    const hint = document.getElementById('eventModalHint');
+    const saveBtn = document.getElementById('eventSaveBtn');
+    if (modal) {
+        modal.dataset.mode = 'edit';
+        modal.dataset.eventId = currentEventId;
+    }
+    if (hint) hint.textContent = 'Update event details.';
+    if (saveBtn) saveBtn.textContent = 'Save Event';
+    document.getElementById('newEventName').value = currentEventMeta?.name || '';
+    document.getElementById('newEventDate').value = currentEventMeta?.date || '';
+    document.getElementById('newEventVenue').value = currentEventMeta?.venue || '';
+    document.getElementById('newEventWhatsappTemplate').value = currentEventMeta?.whatsappTemplate || '';
+    openModal('eventModal');
+}
+
+function saveEventMeta() {
+    const name = document.getElementById('newEventName').value.trim();
+    const date = document.getElementById('newEventDate').value;
+    const venue = document.getElementById('newEventVenue').value.trim();
+    const whatsappTemplate = document.getElementById('newEventWhatsappTemplate').value.trim();
+    if (!name) {
+        showToast('Please enter an event name', 'error');
+        return;
+    }
+
+    const modal = document.getElementById('eventModal');
+    const mode = modal?.dataset.mode || 'create';
+    const eventId = mode === 'edit' ? modal?.dataset.eventId : null;
+    const meta = {
+        name,
+        date: date || '',
+        venue: venue || '',
+        whatsappTemplate: whatsappTemplate || '',
+        updatedAt: new Date().toISOString()
+    };
+
+    if (mode === 'edit' && eventId) {
+        eventsRef.child(`${eventId}/meta`).update(meta)
+            .then(() => {
+                showToast('Event updated!', 'success');
+                closeModal('eventModal');
+            })
+            .catch(() => {
+                showToast('Failed to update event (offline?)', 'error');
+            });
+        return;
+    }
+
+    const newEventRef = eventsRef.push();
+    newEventRef.child('meta').set({
+        ...meta,
+        createdAt: new Date().toISOString()
+    }).then(() => {
+        showToast('Event created!', 'success');
+        closeModal('eventModal');
+        selectEvent(newEventRef.key, meta);
+    }).catch(() => {
+        showToast('Failed to create event (offline?)', 'error');
+    });
+}
+
+function loadEventsAndRestoreSelection() {
+    const storedEventId = localStorage.getItem(getEventStorageKey());
+    eventsRef.on('value', (snap) => {
+        const events = [];
+        if (snap.exists()) {
+            snap.forEach((child) => {
+                events.push({
+                    id: child.key,
+                    meta: child.child('meta').val() || {}
+                });
+            });
+        }
+
+        renderEventOptions(events);
+
+        if (events.length === 0) {
+            currentEventId = null;
+            currentEventMeta = null;
+            guests = [];
+            hosts = [];
+            renderGuestTable();
+            renderHostDropdowns();
+            updateDashboard();
+            updateEventHeader(null);
+            return;
+        }
+
+        const targetId = events.find((ev) => ev.id === storedEventId)?.id || events[0].id;
+        const targetMeta = events.find((ev) => ev.id === targetId)?.meta || null;
+        const eventSelect = document.getElementById('eventSelect');
+        if (eventSelect) eventSelect.value = targetId;
+        if (targetId !== currentEventId) {
+            selectEvent(targetId, targetMeta);
+        } else if (targetMeta) {
+            currentEventMeta = targetMeta;
+            updateEventHeader(targetMeta);
+        }
+    });
+}
+
+async function selectEvent(eventId, meta) {
+    if (!eventId) return;
+    currentEventId = eventId;
+    if (!meta && eventsRef) {
+        try {
+            const snap = await eventsRef.child(`${eventId}/meta`).get();
+            meta = snap.exists() ? snap.val() : null;
+        } catch (e) {
+            meta = null;
+        }
+    }
+    currentEventMeta = meta || currentEventMeta || {};
+    currentEventName = currentEventMeta?.name || null;
+    localStorage.setItem(getEventStorageKey(), eventId);
+    updateEventHeader(currentEventMeta);
+
+    guestsRef?.off();
+    hostsRef?.off();
+    guestsRef = database.ref(`events/${eventId}/guests`);
+    hostsRef = database.ref(`events/${eventId}/hosts`);
+
+    loadGuestsFromLocal();
+    loadHostsFromLocal();
+    renderGuestTable();
+    renderHostDropdowns();
+    updateDashboard();
+
+    guestsRef.on('value', (snap) => {
+        const data = [];
+        if (snap.exists()) {
+            snap.forEach((child) => {
+                data.push({ ...child.val(), firebaseKey: child.key });
+            });
+        }
+        guests = data;
+        saveGuests();
+        renderGuestTable();
+        updateDashboard();
+    });
+
+    hostsRef.on('value', (snap) => {
+        const data = [];
+        if (snap.exists()) {
+            snap.forEach((child) => {
+                data.push({ ...child.val(), firebaseKey: child.key });
+            });
+        }
+        hosts = data;
+        localStorage.setItem(getHostsStorageKey(), JSON.stringify(hosts));
+        renderHostDropdowns();
+        renderHostList();
+    });
+}
+
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    };
+    return String(text ?? '').replace(/[&<>"']/g, (m) => map[m]);
+}
+
+function sendWhatsappInvite(phone, name) {
+    const template = currentEventMeta?.whatsappTemplate;
+    const eventName = currentEventMeta?.name || 'our event';
+    const date = currentEventMeta?.date ? new Date(currentEventMeta.date).toLocaleDateString() : 'soon';
+    const venue = currentEventMeta?.venue || 'our venue';
+    const message = template
+        ? template
+              .replace('{name}', name || 'Guest')
+              .replace('{event}', eventName)
+              .replace('{date}', date)
+              .replace('{venue}', venue)
+        : `Hi ${name || ''}, you are invited to ${eventName} on ${date} at ${venue}. Please confirm your RSVP.`;
+    const encoded = encodeURIComponent(message.trim());
+    const normalized = normalizePhone(phone);
+    window.open(`https://wa.me/${normalized}?text=${encoded}`, '_blank');
 }
 
 function renderEventDashboard(events) {
@@ -98,7 +402,6 @@ async function updateEventMetaStats() {
     try {
         await eventsRef.child(`${currentEventId}/meta`).update({
             updatedAt: new Date().toISOString(),
-        statusHistory: (existingGuest && Array.isArray(existingGuest.statusHistory)) ? existingGuest.statusHistory : [],
             stats
         });
     } catch (e) {
@@ -487,7 +790,7 @@ function renderGuestTable() {
             <td><span class="relative-badge">${guest.relativeOf || '-'}</span></td>
             <td>${guest.members}</td>
             <td>
-                <a href="javascript:void(0)" class="whatsapp-btn" onclick="sendWhatsappInvite('${guest.whatsapp}','${(guest.firstName||'').replace(/'/g,"\'")} ${ (guest.surname||'').replace(/'/g,"\'") }'.trim())">&#128172; WhatsApp</a>
+                <a href="javascript:void(0)" class="whatsapp-btn" onclick="sendWhatsappInvite('${guest.whatsapp}','${(guest.firstName||'').replace(/'/g,"\\'")} ${ (guest.surname||'').replace(/'/g,"\\'") }'.trim())">&#128172; WhatsApp</a>
             </td>
             <td><span class="badge badge-${(guest.foodPref || 'Regular').toLowerCase()}">${guest.foodPref || 'Regular'}</span></td>
             <td><span class="badge badge-${guest.rsvpStatus.toLowerCase()}">${guest.rsvpStatus}</span></td>
@@ -798,7 +1101,7 @@ function restoreBackup(event) {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = function(e) {
+    reader.onload = async function(e) {
         try {
             const backup = JSON.parse(e.target.result);
 
