@@ -875,3 +875,37 @@ function showToast(message, type = 'success') {
         toast.classList.remove('show');
     }, 3000);
 }
+
+
+// =========================
+// HAPTIC-LIKE FEEDBACK
+// =========================
+function triggerHapticFeedback(level = 'light') {
+    if (!('vibrate' in navigator)) return;
+    const duration = level === 'medium' ? 15 : 8;
+    navigator.vibrate(duration);
+}
+
+function setupHapticButtonFeedback() {
+    const selector = '.btn, .action-btn, .quick-action-item';
+
+    document.addEventListener('pointerdown', (e) => {
+        const el = e.target.closest(selector);
+        if (!el) return;
+
+        triggerHapticFeedback('light');
+        el.classList.remove('haptic-press');
+        void el.offsetWidth;
+        el.classList.add('haptic-press');
+    }, { passive: true });
+
+    document.addEventListener('pointerup', (e) => {
+        const el = e.target.closest(selector);
+        if (el) el.classList.remove('haptic-press');
+    }, { passive: true });
+
+    document.addEventListener('pointercancel', (e) => {
+        const el = e.target.closest(selector);
+        if (el) el.classList.remove('haptic-press');
+    }, { passive: true });
+}

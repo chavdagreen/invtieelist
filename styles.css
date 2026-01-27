@@ -1348,3 +1348,40 @@ form {
 ::-webkit-scrollbar-thumb:hover {
     background: var(--primary-purple);
 }
+
+
+/* =========================
+   HAPTIC-LIKE BUTTON EFFECT
+   ========================= */
+.btn, .action-btn, .quick-action-item {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  will-change: transform;
+}
+
+.btn:active {
+  transform: scale(0.98);
+  filter: brightness(0.98);
+}
+
+.action-btn:active {
+  transform: scale(0.95);
+}
+
+.quick-action-item:active {
+  transform: scale(0.99);
+}
+
+.haptic-press {
+  animation: hapticPress 140ms ease-out;
+}
+
+@keyframes hapticPress {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .haptic-press { animation: none; }
+}
