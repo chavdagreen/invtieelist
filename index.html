@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="InviteePro">
+    <meta name="theme-color" content="#7c3aed">
+    <meta name="description" content="Manage your housewarming guest list">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%237c3aed' width='100' height='100' rx='20'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>&#127968;</text></svg>">
+    <title>Housewarming Invitee List</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- SheetJS for Excel export -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- jsPDF for PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">InviteePro</div>
+            <nav class="sidebar-nav">
+                <div class="nav-item active">
+                    <span>&#127968;</span> Dashboard
+                </div>
+                <div class="nav-item" onclick="document.getElementById('guestTable').scrollIntoView({behavior: 'smooth'})">
+                    <span>&#128101;</span> Guest List
+                </div>
+                <div class="nav-item" onclick="openExportModal()">
+                    <span>&#128196;</span> Export
+                </div>
+                <div class="nav-item" onclick="openBackupModal()">
+                    <span>&#128190;</span> Backup
+                </div>
+            </nav>
+            <div class="nav-item" onclick="openAddModal()" style="margin-top: auto; background: rgba(255,255,255,0.2);">
+                <span>&#10133;</span> Add Guest
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="container">
+                <!-- Header -->
+                <header class="header">
+                    <div class="header-title">
+                        <h1>Housewarming Invitee List</h1>
+                        <p>Welcome! Manage your guest list for the celebration.</p>
+                    </div>
+                    <div class="header-actions">
+                        <button class="btn btn-primary" onclick="openAddModal()">
+                            <span>+</span> Add Guest
+                        </button>
+                    </div>
+                </header>
+
+                <!-- Dashboard Stats -->
+                <section class="dashboard">
+                    <div class="stat-card purple">
+                        <div class="stat-icon">&#128101;</div>
+                        <div>
+                            <div class="stat-label">Total Families</div>
+                            <div class="stat-value" id="totalFamilies">0</div>
+                            <div class="stat-sub">Invited families</div>
+                        </div>
+                    </div>
+                    <div class="stat-card pink">
+                        <div class="stat-icon">&#127881;</div>
+                        <div>
+                            <div class="stat-label">Total Guests</div>
+                            <div class="stat-value" id="totalGuests">0</div>
+                            <div class="stat-sub">For dinner arrangements</div>
+                        </div>
+                    </div>
+                    <div class="stat-card orange">
+                        <div class="stat-icon">&#9203;</div>
+                        <div>
+                            <div class="stat-label">Pending RSVP</div>
+                            <div class="stat-value" id="pendingCount">0</div>
+                            <div class="stat-sub">Awaiting response</div>
+                        </div>
+                    </div>
+                    <div class="stat-card green">
+                        <div class="stat-icon">&#9989;</div>
+                        <div>
+                            <div class="stat-label">Confirmed</div>
+                            <div class="stat-value" id="confirmedCount">0</div>
+                            <div class="stat-sub">Ready to attend</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Content Grid - Side panels -->
+                <section class="content-grid">
+                    <!-- Left Side - Food Summary & Recent -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><span>&#127869;</span> Food Preference Summary</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="food-summary">
+                                <div class="food-item">
+                                    <div class="food-icon">&#127807;</div>
+                                    <div class="food-count" id="vegCount">0</div>
+                                    <div class="food-label">Veg Guests</div>
+                                </div>
+                                <div class="food-item">
+                                    <div class="food-icon">&#127830;</div>
+                                    <div class="food-count" id="nonVegCount">0</div>
+                                    <div class="food-label">Non-Veg Guests</div>
+                                </div>
+                                <div class="food-item">
+                                    <div class="food-icon">&#127793;</div>
+                                    <div class="food-count" id="jainCount">0</div>
+                                    <div class="food-label">Jain Guests</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Side - RSVP Status & Quick Actions -->
+                    <div>
+                        <div class="card" style="margin-bottom: 20px;">
+                            <div class="card-header">
+                                <h2><span>&#128202;</span> RSVP Status</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="status-list">
+                                    <div class="status-item">
+                                        <span class="status-dot green"></span>
+                                        <span class="status-label">Confirmed</span>
+                                        <span class="status-count" id="statusConfirmed">0</span>
+                                    </div>
+                                    <div class="status-item">
+                                        <span class="status-dot yellow"></span>
+                                        <span class="status-label">Pending</span>
+                                        <span class="status-count" id="statusPending">0</span>
+                                    </div>
+                                    <div class="status-item">
+                                        <span class="status-dot red"></span>
+                                        <span class="status-label">Declined</span>
+                                        <span class="status-count" id="statusDeclined">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h2><span>&#127873;</span> Gift Tracker</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="status-list">
+                                    <div class="status-item">
+                                        <span class="status-dot green"></span>
+                                        <span class="status-label">Gifts Received</span>
+                                        <span class="status-count" id="giftsCount">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Quick Actions -->
+                <section class="card" style="margin-bottom: 24px;">
+                    <div class="card-header">
+                        <h2><span>&#9889;</span> Quick Actions</h2>
+                    </div>
+                    <div class="card-body">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                            <div class="quick-action-item" onclick="openAddModal()">
+                                <div class="quick-action-icon purple">&#128221;</div>
+                                <div class="quick-action-text">
+                                    <h4>Add New Guest</h4>
+                                    <p>Add family to the list</p>
+                                </div>
+                            </div>
+                            <div class="quick-action-item" onclick="openExportModal()">
+                                <div class="quick-action-icon pink">&#128196;</div>
+                                <div class="quick-action-text">
+                                    <h4>Export List</h4>
+                                    <p>Download Excel or PDF</p>
+                                </div>
+                            </div>
+                            <div class="quick-action-item" onclick="copyAllWhatsappNumbers()">
+                                <div class="quick-action-icon green">&#128222;</div>
+                                <div class="quick-action-text">
+                                    <h4>Copy All Numbers</h4>
+                                    <p>For WhatsApp broadcast</p>
+                                </div>
+                            </div>
+                            <div class="quick-action-item" onclick="openBackupModal()">
+                                <div class="quick-action-icon orange">&#128190;</div>
+                                <div class="quick-action-text">
+                                    <h4>Backup Data</h4>
+                                    <p>Save your guest list</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Action Bar -->
+                <section class="action-bar">
+                    <div class="search-box">
+                        <input type="text" id="searchInput" placeholder="Search by name or phone...">
+                    </div>
+                    <div class="filter-box">
+                        <select id="filterRsvp">
+                            <option value="">All RSVP Status</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Confirmed">Confirmed</option>
+                            <option value="Declined">Declined</option>
+                        </select>
+                        <select id="filterFood">
+                            <option value="">All Food Preferences</option>
+                            <option value="Veg">Veg</option>
+                            <option value="Non-Veg">Non-Veg</option>
+                            <option value="Jain">Jain</option>
+                        </select>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="openAddModal()">+ Add Guest</button>
+                        <button class="btn btn-secondary" onclick="openExportModal()">Export</button>
+                        <button class="btn btn-outline" onclick="openBackupModal()">Backup</button>
+                    </div>
+                </section>
+
+                <!-- Guest Table -->
+                <section class="table-section">
+                    <div class="table-wrapper">
+                        <table id="guestTable">
+                            <thead>
+                                <tr>
+                                    <th>S.No</th>
+                                    <th>Family Head Name</th>
+                                    <th>Members</th>
+                                    <th>WhatsApp</th>
+                                    <th>Food Pref</th>
+                                    <th>RSVP</th>
+                                    <th>Gift</th>
+                                    <th>Notes</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="guestTableBody">
+                                <!-- Dynamic content -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="empty-state" id="emptyState">
+                        <div class="empty-icon">&#128221;</div>
+                        <p>No guests added yet. Start by adding your first guest!</p>
+                        <button class="btn btn-primary" onclick="openAddModal()">+ Add Your First Guest</button>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add/Edit Guest Modal -->
+    <div class="modal" id="guestModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Add New Guest</h2>
+                <button class="close-btn" onclick="closeModal('guestModal')">&times;</button>
+            </div>
+            <form id="guestForm" onsubmit="saveGuest(event)">
+                <input type="hidden" id="guestId">
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="firstName">First Name *</label>
+                        <input type="text" id="firstName" required placeholder="e.g., Rajesh">
+                    </div>
+                    <div class="form-group">
+                        <label for="surname">Surname *</label>
+                        <input type="text" id="surname" required placeholder="e.g., Sharma">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="members">Number of Family Members *</label>
+                        <input type="number" id="members" min="1" value="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="whatsapp">WhatsApp Number *</label>
+                        <div class="phone-input">
+                            <span class="country-code">+91</span>
+                            <input type="tel" id="whatsapp" required placeholder="9876543210"
+                                   pattern="[0-9]{10}" maxlength="10"
+                                   title="Enter 10 digit mobile number">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="foodPref">Food Preference</label>
+                        <select id="foodPref">
+                            <option value="Veg">Veg</option>
+                            <option value="Non-Veg">Non-Veg</option>
+                            <option value="Jain">Jain</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="rsvpStatus">RSVP Status</label>
+                        <select id="rsvpStatus">
+                            <option value="Pending">Pending</option>
+                            <option value="Confirmed">Confirmed</option>
+                            <option value="Declined">Declined</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="giftGiven" onchange="toggleGiftDescription()">
+                            Gift Given
+                        </label>
+                    </div>
+                    <div class="form-group" id="giftDescGroup" style="display: none;">
+                        <label for="giftDescription">Gift Description</label>
+                        <input type="text" id="giftDescription" placeholder="e.g., Silver Coin">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="notes">Notes (Optional)</label>
+                    <textarea id="notes" rows="2" placeholder="Any additional notes..."></textarea>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('guestModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Guest</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Export Modal -->
+    <div class="modal" id="exportModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Export Guest List</h2>
+                <button class="close-btn" onclick="closeModal('exportModal')">&times;</button>
+            </div>
+            <div class="export-options">
+                <h3>&#9745; Select Columns to Export</h3>
+                <div class="checkbox-grid">
+                    <label><input type="checkbox" id="expSno" checked> S.No</label>
+                    <label><input type="checkbox" id="expName" checked> Family Head Name</label>
+                    <label><input type="checkbox" id="expMembers" checked> Members</label>
+                    <label><input type="checkbox" id="expWhatsapp" checked> WhatsApp</label>
+                    <label><input type="checkbox" id="expFood" checked> Food Preference</label>
+                    <label><input type="checkbox" id="expRsvp" checked> RSVP Status</label>
+                    <label><input type="checkbox" id="expGift" checked> Gift</label>
+                    <label><input type="checkbox" id="expNotes" checked> Notes</label>
+                </div>
+
+                <h3>&#128196; Export Format</h3>
+                <div class="export-buttons">
+                    <button class="btn btn-success" onclick="exportToExcel()">
+                        <span>&#128196;</span> Export to Excel
+                    </button>
+                    <button class="btn btn-danger" onclick="exportToPDF()">
+                        <span>&#128195;</span> Export to PDF
+                    </button>
+                </div>
+
+                <hr>
+
+                <h3>&#9889; Quick Export</h3>
+                <div class="export-buttons">
+                    <button class="btn btn-warning" onclick="exportStickerList()">
+                        <span>&#127991;</span> Sticker List (Names)
+                    </button>
+                    <button class="btn btn-whatsapp" onclick="copyAllWhatsappNumbers()">
+                        <span>&#128222;</span> Copy WhatsApp Numbers
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Backup/Restore Modal -->
+    <div class="modal" id="backupModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Backup & Restore</h2>
+                <button class="close-btn" onclick="closeModal('backupModal')">&times;</button>
+            </div>
+            <div class="backup-options">
+                <div class="backup-section">
+                    <h3>&#128190; Backup Data</h3>
+                    <p>Download your guest list as a JSON file for safekeeping.</p>
+                    <button class="btn btn-primary" onclick="downloadBackup()">
+                        <span>&#128190;</span> Download Backup
+                    </button>
+                </div>
+                <hr style="border: none; border-top: 2px dashed var(--border-color); margin: 24px 0;">
+                <div class="backup-section">
+                    <h3>&#128194; Restore Data</h3>
+                    <p>Restore your guest list from a previously saved backup file.</p>
+                    <p class="warning">Warning: This will replace all current data!</p>
+                    <input type="file" id="restoreFile" accept=".json" onchange="restoreBackup(event)">
+                    <label for="restoreFile" class="btn btn-outline">
+                        <span>&#128194;</span> Choose Backup File
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal" id="deleteModal">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>Confirm Delete</h2>
+                <button class="close-btn" onclick="closeModal('deleteModal')">&times;</button>
+            </div>
+            <div class="delete-confirm">
+                <p>Are you sure you want to delete <strong id="deleteGuestName"></strong>?</p>
+                <p class="warning">This action cannot be undone.</p>
+                <div class="form-actions" style="justify-content: center;">
+                    <button class="btn btn-outline" onclick="closeModal('deleteModal')">Cancel</button>
+                    <button class="btn btn-danger" onclick="confirmDelete()">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
