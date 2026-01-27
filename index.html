@@ -7,9 +7,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="InviteePro">
     <meta name="theme-color" content="#7c3aed">
-    <meta name="description" content="Manage your housewarming guest list">
+    <meta name="description" content="Manage your invitee lists for multiple events">
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%237c3aed' width='100' height='100' rx='20'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>&#127968;</text></svg>">
-    <title>Housewarming Invitee List</title>
+    <title>InviteePro</title>
     <link rel="stylesheet" href="styles.css">
     <!-- SheetJS for Excel export -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
@@ -22,6 +22,13 @@
 </head>
 <body>
     <div class="app-layout">
+        <!-- Login Overlay -->
+        <h2>Sign in to continue</h2>
+                <p>Create multiple events and manage invitees securely.</p>
+                <button class="btn btn-primary btn-google" onclick="loginWithGoogle()">🔐 Sign in with Google</button>
+            </div>
+        </div>
+
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-logo">InviteePro</div>
@@ -53,11 +60,22 @@
                 <!-- Header -->
                 <header class="header">
                     <div class="header-title">
-                        <h1>Housewarming Invitee List</h1>
-                        <p>Welcome! Manage your guest list for the celebration.</p>
+                        <h1 id="eventTitle">InviteePro</h1>
+                        <p id="eventSubtitle">Sign in to create events and manage invitees.</p>
+                        <div class="event-toolbar">
+                            <select id="eventSelect" class="select">
+                                <option value="">Select Event</option>
+                            </select>
+                            <button class="btn btn-outline" onclick="openEventModal()">+ New Event</button>
+                        </div>
                     </div>
                     <div class="header-actions">
-                        <button class="btn btn-primary" onclick="openAddModal()">
+                        <div class="user-pill" id="userPill" style="display:none;">
+                            <span class="user-avatar" id="userAvatar">👤</span>
+                            <span class="user-name" id="userName">User</span>
+                        </div>
+
+<button class="btn btn-primary" id="addGuestBtn" onclick="openAddModal()" style="display:none;">
                             <span>+</span> Add Guest
                         </button>
                     </div>
@@ -501,5 +519,23 @@
     <div class="toast" id="toast"></div>
 
     <script src="app.js"></script>
+
+    <!-- Event Modal -->
+    <div class="modal" id="eventModal">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>Create New Event</h2>
+                <button class="modal-close" onclick="closeModal('eventModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Event Name</label>
+                    <input type="text" id="newEventName" placeholder="e.g., Wedding Reception, Birthday, Seminar">
+                </div>
+                <button class="btn btn-primary" style="width:100%;" onclick="createEvent()">Create Event</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

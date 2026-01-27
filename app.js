@@ -14,12 +14,13 @@ const firebaseConfig = {
 // Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
-const guestsRef = database.ref('guests');
-const hostsRef = database.ref('hosts');
-
+let guestsRef = null;
+let hostsRef = null;
+let eventsRef = null;
 // Data Storage Keys (for local backup)
-const STORAGE_KEY = 'housewarmingInvitees';
-const HOSTS_STORAGE_KEY = 'housewarmingHosts';
+const STORAGE_KEY_BASE = 'inviteeProGuests';
+const HOSTS_STORAGE_KEY_BASE = 'inviteeProHosts';
+const EVENT_STORAGE_KEY_BASE = 'inviteeProSelectedEvent';
 
 // Global Variables
 let guests = [];
@@ -27,16 +28,256 @@ let hosts = [];
 let deleteTargetId = null;
 let isOnline = navigator.onLine;
 
+let currentUser = null;
+let currentEventId = null;
+let currentEventName = null;
+
 // Initialize Application
 document.addEventListener('DOMContentLoaded', function() {
-    setupFirebaseListeners();
+    initAuth();
     setupEventListeners();
     setupOnlineStatusListeners();
     showSyncStatus();
 });
 
+
+// ==================== AUTH + EVENTS ====================
+
+function getGuestsStorageKey() {
+    const uid = currentUser ? currentUser.uid : 'anon';
+    const eid = currentEventId || 'noevent';
+    return `${STORAGE_KEY_BASE}_${uid}_${eid}`;
+}
+
+function getHostsStorageKey() {
+    const uid = currentUser ? currentUser.uid : 'anon';
+    const eid = currentEventId || 'noevent';
+    return `${HOSTS_STORAGE_KEY_BASE}_${uid}_${eid}`;
+}
+
+function getSelectedEventKey() {
+    const uid = currentUser ? currentUser.uid : 'anon';
+    return `${EVENT_STORAGE_KEY_BASE}_${uid}`;
+}
+
+function initAuth() {
+    // Firebase Auth (Google)
+    const auth = firebase.auth();
+    auth.onAuthStateChanged(async (user) => {
+        currentUser = user || null;
+
+        if (!currentUser) {
+            setLoggedOutUI();
+            detachEventListeners();
+            guests = [];
+            hosts = [];
+            renderGuestTable();
+            updateDashboard();
+            renderHostDropdowns();
+            renderHostList();
+            return;
+        }
+
+        setLoggedInUI(currentUser);
+        await loadEventsAndRestoreSelection();
+    });
+}
+
+function loginWithGoogle() {
+    showToast('Login failed. Please try again.', 'error');
+    });
+}
+
+function logout() {
+    firebase.auth().signOut().catch((err) => {
+        console.error('Logout error:', err);
+        showToast('Logout failed.', 'error');
+    });
+}
+
+function setLoggedOutUI() {
+    const overlay = document.getElementById('loginOverlay');
+    if (overlay) overlay.classList.add('show');
+
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const addGuestBtn = document.getElementById('addGuestBtn');
+    const userPill = document.getElementById('userPill');
+
+    if (loginBtn) loginBtn.style.display = 'inline-flex';
+    if (logoutBtn) logoutBtn.style.display = 'none';
+    if (addGuestBtn) addGuestBtn.style.display = 'none';
+    if (userPill) userPill.style.display = 'none';
+
+    // Reset event UI
+    const eventTitle = document.getElementById('eventTitle');
+    const eventSubtitle = document.getElementById('eventSubtitle');
+    if (eventTitle) eventTitle.textContent = 'InviteePro';
+    if (eventSubtitle) eventSubtitle.textContent = 'Sign in to create events and manage invitees.';
+
+    const eventSelect = document.getElementById('eventSelect');
+    if (eventSelect) {
+        eventSelect.innerHTML = '<option value="">Select Event</option>';
+        eventSelect.disabled = true;
+    }
+}
+
+function setLoggedInUI(user) {
+    const overlay = document.getElementById('loginOverlay');
+    if (overlay) overlay.classList.remove('show');
+
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const userPill = document.getElementById('userPill');
+    const userName = document.getElementById('userName');
+    const userAvatar = document.getElementById('userAvatar');
+
+    if (loginBtn) loginBtn.style.display = 'none';
+    if (logoutBtn) logoutBtn.style.display = 'inline-flex';
+    if (userPill) userPill.style.display = 'inline-flex';
+
+    if (userName) userName.textContent = user.displayName || user.email || 'User';
+    if (userAvatar) userAvatar.textContent = (user.displayName && user.displayName.trim()[0]) ? user.displayName.trim()[0].toUpperCase() : '👤';
+
+    const eventSelect = document.getElementById('eventSelect');
+    if (eventSelect) eventSelect.disabled = false;
+}
+
+async function loadEventsAndRestoreSelection() {
+    if (!currentUser) return;
+
+    eventsRef = database.ref(`users/${currentUser.uid}/events`);
+
+    // Populate dropdown
+    const snapshot = await eventsRef.get().catch((e) => {
+        console.error('Events load error:', e);
+        showToast('Unable to load events', 'error');
+        return null;
+    });
+
+    const eventSelect = document.getElementById('eventSelect');
+    if (!eventSelect) return;
+
+    eventSelect.innerHTML = '<option value="">Select Event</option>';
+
+    if (snapshot && snapshot.exists()) {
+        snapshot.forEach(child => {
+            const meta = child.child('meta').val() || {};
+            const name = meta.name || 'Untitled Event';
+            eventSelect.innerHTML += `<option value="${child.key}">${name}</option>`;
+        });
+    }
+
+    // Restore last selected event (per user)
+    const savedEventId = localStorage.getItem(getSelectedEventKey());
+    if (savedEventId) {
+        eventSelect.value = savedEventId;
+    }
+
+    // If still empty but there are events, select the first event
+    if (!eventSelect.value && snapshot && snapshot.exists()) {
+        let firstKey = null;
+        snapshot.forEach(child => {
+            if (!firstKey) firstKey = child.key;
+        });
+        if (firstKey) eventSelect.value = firstKey;
+    }
+
+    // Trigger selection handling
+    if (eventSelect.value) {
+        await selectEvent(eventSelect.value);
+    } else {
+        updateEventUI(null, null);
+        guests = [];
+        hosts = [];
+        renderGuestTable();
+        updateDashboard();
+        renderHostDropdowns();
+        renderHostList();
+        const addGuestBtn = document.getElementById('addGuestBtn');
+        if (addGuestBtn) addGuestBtn.style.display = 'none';
+    }
+}
+
+function updateEventUI(eventId, eventName) {
+    const eventTitle = document.getElementById('eventTitle');
+    const eventSubtitle = document.getElementById('eventSubtitle');
+    if (eventTitle) eventTitle.textContent = eventName ? eventName : 'InviteePro';
+    if (eventSubtitle) eventSubtitle.textContent = eventName ? 'Manage your invitees for this event.' : 'Create or select an event to start.';
+}
+
+function openEventModal() {
+    openModal('eventModal');
+    const input = document.getElementById('newEventName');
+    if (input) {
+        input.value = '';
+        setTimeout(() => input.focus(), 50);
+    }
+}
+
+async function createEvent() {
+    if (!currentUser) {
+        showToast('Please sign in first', 'error');
+        return;
+    }
+    const input = document.getElementById('newEventName');
+    const name = (input ? input.value : '').trim();
+    if (!name) {
+        showToast('Please enter an event name', 'error');
+        return;
+    }
+
+    const newRef = eventsRef.push();
+    await newRef.child('meta').set({
+        name,
+        createdAt: new Date().toISOString()
+    });
+
+    closeModal('eventModal');
+    showToast('Event created', 'success');
+
+    // Reload dropdown and select new event
+    await loadEventsAndRestoreSelection();
+    const eventSelect = document.getElementById('eventSelect');
+    if (eventSelect) {
+        eventSelect.value = newRef.key;
+    }
+    await selectEvent(newRef.key);
+}
+
+async function selectEvent(eventId) {
+    if (!currentUser || !eventId) return;
+
+    currentEventId = eventId;
+
+    const metaSnap = await database.ref(`users/${currentUser.uid}/events/${eventId}/meta`).get();
+    const meta = metaSnap.exists() ? metaSnap.val() : {};
+    currentEventName = meta.name || 'Event';
+
+    localStorage.setItem(getSelectedEventKey(), eventId);
+    updateEventUI(eventId, currentEventName);
+
+    // Setup scoped refs
+    guestsRef = database.ref(`users/${currentUser.uid}/events/${eventId}/guests`);
+    hostsRef = database.ref(`users/${currentUser.uid}/events/${eventId}/hosts`);
+
+    detachEventListeners();
+    setupFirebaseListeners();
+
+    const addGuestBtn = document.getElementById('addGuestBtn');
+    if (addGuestBtn) addGuestBtn.style.display = 'inline-flex';
+}
+
+function detachEventListeners() {
+    try { if (guestsRef) guestsRef.off(); } catch(e) {}
+    try { if (hostsRef) hostsRef.off(); } catch(e) {}
+}
+
+
 // Setup Firebase Real-time Listeners
 function setupFirebaseListeners() {
+    if (!guestsRef || !hostsRef) return;
+
     // Listen for guests data changes
     guestsRef.on('value', (snapshot) => {
         const data = snapshot.val();
@@ -48,7 +289,7 @@ function setupFirebaseListeners() {
         } else {
             guests = [];
         }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(guests));
+        localStorage.setItem(getGuestsStorageKey(), JSON.stringify(guests));
         renderGuestTable();
         updateDashboard();
     }, (error) => {
@@ -67,7 +308,7 @@ function setupFirebaseListeners() {
         } else {
             hosts = [];
         }
-        localStorage.setItem(HOSTS_STORAGE_KEY, JSON.stringify(hosts));
+        localStorage.setItem(getHostsStorageKey(), JSON.stringify(hosts));
         renderHostDropdowns();
         renderHostList();
     }, (error) => {
@@ -78,14 +319,14 @@ function setupFirebaseListeners() {
 
 // Load from localStorage (fallback)
 function loadGuestsFromLocalStorage() {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(getGuestsStorageKey());
     guests = stored ? JSON.parse(stored) : [];
     renderGuestTable();
     updateDashboard();
 }
 
 function loadHostsFromLocalStorage() {
-    const stored = localStorage.getItem(HOSTS_STORAGE_KEY);
+    const stored = localStorage.getItem(getHostsStorageKey());
     hosts = stored ? JSON.parse(stored) : [];
     renderHostDropdowns();
     renderHostList();
@@ -122,6 +363,34 @@ function setupEventListeners() {
     document.getElementById('filterRsvp').addEventListener('change', filterAndRenderTable);
     document.getElementById('filterFood').addEventListener('change', filterAndRenderTable);
     document.getElementById('filterHost').addEventListener('change', filterAndRenderTable);
+
+
+    const eventSelect = document.getElementById('eventSelect');
+    if (eventSelect) {
+        eventSelect.addEventListener('change', async (e) => {
+            const eventId = e.target.value;
+
+            if (!eventId) {
+                currentEventId = null;
+                currentEventName = null;
+                detachEventListeners();
+                updateEventUI(null, null);
+                guests = [];
+                hosts = [];
+                renderGuestTable();
+                updateDashboard();
+                renderHostDropdowns();
+                renderHostList();
+
+                const addGuestBtn = document.getElementById('addGuestBtn');
+                if (addGuestBtn) addGuestBtn.style.display = 'none';
+                return;
+            }
+
+            await selectEvent(eventId);
+        });
+    }
+
 
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', function(e) {
@@ -226,7 +495,7 @@ function addHost() {
             console.error('Firebase host add error:', error);
             // Fallback: save locally
             hosts.push({ ...hostData, id: generateId() });
-            localStorage.setItem(HOSTS_STORAGE_KEY, JSON.stringify(hosts));
+            localStorage.setItem(getHostsStorageKey(), JSON.stringify(hosts));
             renderHostDropdowns();
             renderHostList();
             showToast('Host added locally', 'success');
@@ -290,7 +559,7 @@ function addHostInline() {
         .catch((error) => {
             console.error('Firebase host add error:', error);
             hosts.push({ ...hostData, id: generateId() });
-            localStorage.setItem(HOSTS_STORAGE_KEY, JSON.stringify(hosts));
+            localStorage.setItem(getHostsStorageKey(), JSON.stringify(hosts));
             renderHostDropdowns();
             closeModal('addHostInlineModal');
             setTimeout(() => {
@@ -303,7 +572,7 @@ function addHostInline() {
 // ==================== GUEST MANAGEMENT ====================
 
 function saveGuests() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(guests));
+    localStorage.setItem(getGuestsStorageKey(), JSON.stringify(guests));
 }
 
 function saveGuestToFirebase(guestData) {
@@ -844,7 +1113,7 @@ function restoreBackup(event) {
                 guests = guestsData;
                 hosts = hostsData;
                 saveGuests();
-                localStorage.setItem(HOSTS_STORAGE_KEY, JSON.stringify(hosts));
+                localStorage.setItem(getHostsStorageKey(), JSON.stringify(hosts));
                 renderGuestTable();
                 renderHostDropdowns();
                 updateDashboard();
@@ -874,38 +1143,4 @@ function showToast(message, type = 'success') {
     setTimeout(() => {
         toast.classList.remove('show');
     }, 3000);
-}
-
-
-// =========================
-// HAPTIC-LIKE FEEDBACK
-// =========================
-function triggerHapticFeedback(level = 'light') {
-    if (!('vibrate' in navigator)) return;
-    const duration = level === 'medium' ? 15 : 8;
-    navigator.vibrate(duration);
-}
-
-function setupHapticButtonFeedback() {
-    const selector = '.btn, .action-btn, .quick-action-item';
-
-    document.addEventListener('pointerdown', (e) => {
-        const el = e.target.closest(selector);
-        if (!el) return;
-
-        triggerHapticFeedback('light');
-        el.classList.remove('haptic-press');
-        void el.offsetWidth;
-        el.classList.add('haptic-press');
-    }, { passive: true });
-
-    document.addEventListener('pointerup', (e) => {
-        const el = e.target.closest(selector);
-        if (el) el.classList.remove('haptic-press');
-    }, { passive: true });
-
-    document.addEventListener('pointercancel', (e) => {
-        const el = e.target.closest(selector);
-        if (el) el.classList.remove('haptic-press');
-    }, { passive: true });
 }
