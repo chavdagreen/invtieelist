@@ -64,8 +64,14 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function onUserSignedIn(user) {
-    // Hide login overlay
-    document.getElementById('loginOverlay').classList.remove('show');
+    // Hide landing page, show dashboard
+    const landingPage = document.getElementById('landingPage');
+    const appDashboard = document.getElementById('appDashboard');
+    const authModal = document.getElementById('authModal');
+
+    if (landingPage) landingPage.style.display = 'none';
+    if (appDashboard) appDashboard.style.display = 'flex';
+    if (authModal) authModal.classList.remove('show');
 
     // Update user pill
     const userPill = document.getElementById('userPill');
@@ -88,8 +94,12 @@ function onUserSignedIn(user) {
 }
 
 function onUserSignedOut() {
-    // Show login overlay
-    document.getElementById('loginOverlay').classList.add('show');
+    // Show landing page, hide dashboard
+    const landingPage = document.getElementById('landingPage');
+    const appDashboard = document.getElementById('appDashboard');
+
+    if (landingPage) landingPage.style.display = 'block';
+    if (appDashboard) appDashboard.style.display = 'none';
 
     // Hide user pill
     const userPill = document.getElementById('userPill');
@@ -108,6 +118,34 @@ function onUserSignedOut() {
     renderHostDropdowns();
     updateDashboard();
     updateEventHeader(null);
+}
+
+// ==================== AUTH MODAL & LANDING PAGE ====================
+
+function openAuthModal(mode) {
+    const authModal = document.getElementById('authModal');
+    if (authModal) {
+        authModal.classList.add('show');
+        if (mode === 'signup') {
+            showSignupForm();
+        } else {
+            showLoginForm();
+        }
+    }
+}
+
+function closeAuthModal() {
+    const authModal = document.getElementById('authModal');
+    if (authModal) {
+        authModal.classList.remove('show');
+    }
+}
+
+function toggleMobileMenu() {
+    const mobileMenu = document.getElementById('mobileMenu');
+    if (mobileMenu) {
+        mobileMenu.classList.toggle('show');
+    }
 }
 
 function signInWithGoogle() {
@@ -207,8 +245,7 @@ function initUserData() {
 function initEvents() {
     // This function is now called only after auth
     if (!currentUserId) {
-        // Show login overlay if not authenticated
-        document.getElementById('loginOverlay').classList.add('show');
+        // Landing page is shown by default when not authenticated
         return;
     }
     eventsRef = database.ref(`users/${currentUserId}/events`);

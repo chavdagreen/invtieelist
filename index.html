@@ -9,7 +9,7 @@
     <meta name="theme-color" content="#7c3aed">
     <meta name="description" content="Manage your invitee lists for multiple events">
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%237c3aed' width='100' height='100' rx='20'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>&#127968;</text></svg>">
-    <title>InviteePro</title>
+    <title>InviteePro - Event Guest Management</title>
     <link rel="stylesheet" href="styles.css">
     <!-- SheetJS for Excel export -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
@@ -22,48 +22,317 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 </head>
 <body>
-    <!-- Login Overlay -->
-    <div class="login-overlay" id="loginOverlay">
-        <div class="login-card">
-            <div class="login-logo">InviteePro</div>
-            <h2>Welcome</h2>
-            <p>Sign in to manage your event invitations</p>
-
-            <div id="loginForm">
-                <button class="btn btn-primary btn-google" onclick="signInWithGoogle()" style="width:100%; margin-bottom: 16px;">
-                    <svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-                    Sign in with Google
-                </button>
-
-                <div class="divider-text">or sign in with email</div>
-
-                <div class="form-group" style="margin-bottom: 12px;">
-                    <input type="email" id="loginEmail" placeholder="Email address" style="width: 100%;">
+    <!-- ==================== LANDING PAGE ==================== -->
+    <div class="landing-page" id="landingPage">
+        <!-- Navigation -->
+        <nav class="landing-nav">
+            <div class="landing-nav-container">
+                <div class="landing-logo">
+                    <span class="logo-icon">&#127881;</span>
+                    InviteePro
                 </div>
-                <div class="form-group" style="margin-bottom: 12px;">
-                    <input type="password" id="loginPassword" placeholder="Password" style="width: 100%;">
+                <div class="landing-nav-links">
+                    <a href="#features">Features</a>
+                    <a href="#how-it-works">How it Works</a>
+                    <button class="btn btn-outline btn-nav" onclick="openAuthModal('login')">Sign In</button>
+                    <button class="btn btn-primary btn-nav" onclick="openAuthModal('signup')">Get Started</button>
                 </div>
-                <button class="btn btn-primary" onclick="signInWithEmail()" style="width:100%; margin-bottom: 12px;">Sign In</button>
-                <button class="btn btn-outline" onclick="showSignupForm()" style="width:100%;">Create Account</button>
+                <button class="mobile-menu-btn" onclick="toggleMobileMenu()">&#9776;</button>
+            </div>
+        </nav>
+
+        <!-- Mobile Menu -->
+        <div class="mobile-menu" id="mobileMenu">
+            <a href="#features" onclick="toggleMobileMenu()">Features</a>
+            <a href="#how-it-works" onclick="toggleMobileMenu()">How it Works</a>
+            <button class="btn btn-outline" onclick="openAuthModal('login'); toggleMobileMenu();" style="width:100%;">Sign In</button>
+            <button class="btn btn-primary" onclick="openAuthModal('signup'); toggleMobileMenu();" style="width:100%;">Get Started</button>
+        </div>
+
+        <!-- Hero Section -->
+        <section class="hero">
+            <div class="hero-background">
+                <div class="floating-shape shape-1"></div>
+                <div class="floating-shape shape-2"></div>
+                <div class="floating-shape shape-3"></div>
+                <div class="floating-shape shape-4"></div>
+                <div class="floating-shape shape-5"></div>
             </div>
 
-            <div id="signupForm" style="display: none;">
-                <div class="form-group" style="margin-bottom: 12px;">
-                    <input type="text" id="signupName" placeholder="Your Name" style="width: 100%;">
+            <div class="hero-content">
+                <div class="hero-text">
+                    <div class="hero-badge">
+                        <span>&#10024;</span> Free & Easy to Use
+                    </div>
+                    <h1 class="hero-title">
+                        Manage Your Event
+                        <span class="gradient-text">Guest Lists</span>
+                        Effortlessly
+                    </h1>
+                    <p class="hero-subtitle">
+                        Create multiple events, track RSVPs, send WhatsApp invitations, and export beautiful guest lists. Perfect for weddings, parties, and corporate events.
+                    </p>
+                    <div class="hero-cta">
+                        <button class="btn btn-primary btn-large" onclick="openAuthModal('signup')">
+                            <span>&#127881;</span> Start Free Now
+                        </button>
+                        <button class="btn btn-outline btn-large" onclick="openAuthModal('login')">
+                            <span>&#128100;</span> Sign In
+                        </button>
+                    </div>
+                    <div class="hero-stats">
+                        <div class="hero-stat">
+                            <span class="hero-stat-number">100%</span>
+                            <span class="hero-stat-label">Free</span>
+                        </div>
+                        <div class="hero-stat">
+                            <span class="hero-stat-number">&#9729;</span>
+                            <span class="hero-stat-label">Cloud Sync</span>
+                        </div>
+                        <div class="hero-stat">
+                            <span class="hero-stat-number">&#128274;</span>
+                            <span class="hero-stat-label">Secure</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group" style="margin-bottom: 12px;">
-                    <input type="email" id="signupEmail" placeholder="Email address" style="width: 100%;">
+
+                <div class="hero-visual">
+                    <div class="dashboard-preview">
+                        <div class="preview-header">
+                            <div class="preview-dots">
+                                <span></span><span></span><span></span>
+                            </div>
+                            <span>InviteePro Dashboard</span>
+                        </div>
+                        <div class="preview-content">
+                            <div class="preview-stats">
+                                <div class="preview-stat-card purple">
+                                    <span class="preview-stat-icon">&#128101;</span>
+                                    <span class="preview-stat-value">248</span>
+                                    <span class="preview-stat-label">Families</span>
+                                </div>
+                                <div class="preview-stat-card pink">
+                                    <span class="preview-stat-icon">&#127881;</span>
+                                    <span class="preview-stat-value">892</span>
+                                    <span class="preview-stat-label">Guests</span>
+                                </div>
+                                <div class="preview-stat-card green">
+                                    <span class="preview-stat-icon">&#9989;</span>
+                                    <span class="preview-stat-value">654</span>
+                                    <span class="preview-stat-label">Confirmed</span>
+                                </div>
+                            </div>
+                            <div class="preview-table">
+                                <div class="preview-row header">
+                                    <span>Name</span><span>Members</span><span>Status</span>
+                                </div>
+                                <div class="preview-row">
+                                    <span>Sharma Family</span><span>4</span><span class="status-badge confirmed">Confirmed</span>
+                                </div>
+                                <div class="preview-row">
+                                    <span>Patel Family</span><span>6</span><span class="status-badge pending">Pending</span>
+                                </div>
+                                <div class="preview-row">
+                                    <span>Mehta Family</span><span>3</span><span class="status-badge confirmed">Confirmed</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Floating Elements -->
+                    <div class="floating-card card-1">
+                        <span class="floating-card-icon">&#128172;</span>
+                        <span>WhatsApp Ready</span>
+                    </div>
+                    <div class="floating-card card-2">
+                        <span class="floating-card-icon">&#128196;</span>
+                        <span>Export to Excel</span>
+                    </div>
+                    <div class="floating-card card-3">
+                        <span class="floating-card-icon">&#128274;</span>
+                        <span>Private & Secure</span>
+                    </div>
                 </div>
-                <div class="form-group" style="margin-bottom: 12px;">
-                    <input type="password" id="signupPassword" placeholder="Password (min 6 characters)" style="width: 100%;">
+            </div>
+        </section>
+
+        <!-- Features Section -->
+        <section class="features-section" id="features">
+            <div class="section-container">
+                <div class="section-header">
+                    <span class="section-badge">Features</span>
+                    <h2 class="section-title">Everything You Need to Manage Guests</h2>
+                    <p class="section-subtitle">Powerful features designed to make event planning simple and stress-free</p>
                 </div>
-                <button class="btn btn-primary" onclick="signUpWithEmail()" style="width:100%; margin-bottom: 12px;">Create Account</button>
-                <button class="btn btn-outline" onclick="showLoginForm()" style="width:100%;">Back to Sign In</button>
+
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon purple">&#127881;</div>
+                        <h3>Multiple Events</h3>
+                        <p>Create separate guest lists for weddings, receptions, birthdays, and more. Switch between events easily.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon pink">&#128172;</div>
+                        <h3>WhatsApp Integration</h3>
+                        <p>Send personalized invitations via WhatsApp with custom templates. Use variables for names and details.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon green">&#9989;</div>
+                        <h3>RSVP Tracking</h3>
+                        <p>Track who's coming, who's pending, and who declined. Get real-time updates on your guest count.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon orange">&#128196;</div>
+                        <h3>Export Options</h3>
+                        <p>Export your guest list to Excel or PDF. Create sticker lists for name tags and seating charts.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon blue">&#128229;</div>
+                        <h3>Import Guests</h3>
+                        <p>Reuse guest lists from previous events. Import with one click and save time on data entry.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon violet">&#127869;</div>
+                        <h3>Food Preferences</h3>
+                        <p>Track dietary requirements and food preferences. Perfect for catering planning and arrangements.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- How It Works Section -->
+        <section class="how-it-works-section" id="how-it-works">
+            <div class="section-container">
+                <div class="section-header">
+                    <span class="section-badge">Simple Process</span>
+                    <h2 class="section-title">Get Started in Minutes</h2>
+                    <p class="section-subtitle">Three simple steps to organize your perfect event</p>
+                </div>
+
+                <div class="steps-container">
+                    <div class="step-card">
+                        <div class="step-number">1</div>
+                        <div class="step-icon">&#128100;</div>
+                        <h3>Create Account</h3>
+                        <p>Sign up with Google or email in seconds. Your data is private and secure.</p>
+                    </div>
+                    <div class="step-connector"></div>
+                    <div class="step-card">
+                        <div class="step-number">2</div>
+                        <div class="step-icon">&#128197;</div>
+                        <h3>Add Your Event</h3>
+                        <p>Create an event with date, venue, and start adding your guest list.</p>
+                    </div>
+                    <div class="step-connector"></div>
+                    <div class="step-card">
+                        <div class="step-number">3</div>
+                        <div class="step-icon">&#128640;</div>
+                        <h3>Manage & Share</h3>
+                        <p>Track RSVPs, send invites via WhatsApp, and export your lists anytime.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CTA Section -->
+        <section class="cta-section">
+            <div class="cta-content">
+                <h2>Ready to Organize Your Event?</h2>
+                <p>Join thousands of users who trust InviteePro for their event management</p>
+                <button class="btn btn-primary btn-large" onclick="openAuthModal('signup')">
+                    <span>&#127881;</span> Get Started Free
+                </button>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="landing-footer">
+            <div class="footer-content">
+                <div class="footer-logo">
+                    <span>&#127881;</span> InviteePro
+                </div>
+                <p>Made with &#10084;&#65039; for event planners everywhere</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- ==================== AUTH MODAL ==================== -->
+    <div class="auth-modal" id="authModal">
+        <div class="auth-modal-content">
+            <button class="auth-close-btn" onclick="closeAuthModal()">&times;</button>
+
+            <div class="auth-header">
+                <div class="auth-logo">&#127881; InviteePro</div>
+            </div>
+
+            <!-- Login Form -->
+            <div id="loginForm" class="auth-form">
+                <h2>Welcome Back</h2>
+                <p>Sign in to continue to your dashboard</p>
+
+                <button class="btn btn-google-auth" onclick="signInWithGoogle()">
+                    <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                    Continue with Google
+                </button>
+
+                <div class="auth-divider">
+                    <span>or sign in with email</span>
+                </div>
+
+                <div class="auth-input-group">
+                    <label>Email</label>
+                    <input type="email" id="loginEmail" placeholder="you@example.com">
+                </div>
+                <div class="auth-input-group">
+                    <label>Password</label>
+                    <input type="password" id="loginPassword" placeholder="Enter your password">
+                </div>
+
+                <button class="btn btn-primary btn-auth" onclick="signInWithEmail()">Sign In</button>
+
+                <p class="auth-switch">
+                    Don't have an account? <a href="#" onclick="showSignupForm(); return false;">Create one</a>
+                </p>
+            </div>
+
+            <!-- Signup Form -->
+            <div id="signupForm" class="auth-form" style="display: none;">
+                <h2>Create Account</h2>
+                <p>Get started with your free account</p>
+
+                <button class="btn btn-google-auth" onclick="signInWithGoogle()">
+                    <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                    Continue with Google
+                </button>
+
+                <div class="auth-divider">
+                    <span>or sign up with email</span>
+                </div>
+
+                <div class="auth-input-group">
+                    <label>Your Name</label>
+                    <input type="text" id="signupName" placeholder="John Doe">
+                </div>
+                <div class="auth-input-group">
+                    <label>Email</label>
+                    <input type="email" id="signupEmail" placeholder="you@example.com">
+                </div>
+                <div class="auth-input-group">
+                    <label>Password</label>
+                    <input type="password" id="signupPassword" placeholder="Min 6 characters">
+                </div>
+
+                <button class="btn btn-primary btn-auth" onclick="signUpWithEmail()">Create Account</button>
+
+                <p class="auth-switch">
+                    Already have an account? <a href="#" onclick="showLoginForm(); return false;">Sign in</a>
+                </p>
             </div>
         </div>
     </div>
 
-    <div class="app-layout">
+    <!-- ==================== APP DASHBOARD (Hidden initially) ==================== -->
+    <div class="app-layout" id="appDashboard" style="display: none;">
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-logo">InviteePro</div>
