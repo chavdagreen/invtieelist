@@ -1084,6 +1084,113 @@ form {
     font-size: 0.8rem;
 }
 
+/* Host Select Wrapper */
+.host-select-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.host-select-wrapper select {
+    flex: 1;
+}
+
+.host-select-wrapper .btn {
+    padding: 12px 16px;
+    white-space: nowrap;
+}
+
+/* Host Management Modal */
+.host-management {
+    padding: 24px;
+}
+
+.add-host-section h3,
+.host-list-section h3 {
+    margin-bottom: 16px;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.add-host-form {
+    display: flex;
+    gap: 12px;
+}
+
+.add-host-form input {
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    font-size: 0.95rem;
+    font-family: inherit;
+}
+
+.add-host-form input:focus {
+    outline: none;
+    border-color: var(--primary-purple);
+}
+
+.host-management hr {
+    border: none;
+    border-top: 2px dashed var(--border-color);
+    margin: 24px 0;
+}
+
+.host-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.host-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--bg-color);
+    border-radius: var(--radius-md);
+    transition: all 0.2s;
+}
+
+.host-item:hover {
+    background: #ede9fe;
+}
+
+.host-item-name {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.host-item-count {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-left: 8px;
+}
+
+.host-item-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.host-item-actions button {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+}
+
+/* Relative Of Badge */
+.relative-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    background: #ede9fe;
+    color: var(--primary-purple);
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
 /* Responsive Styles */
 @media (max-width: 1200px) {
     .dashboard {

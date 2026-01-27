@@ -15,12 +15,15 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 const guestsRef = database.ref('guests');
+const hostsRef = database.ref('hosts');
 
-// Data Storage Key (for local backup)
+// Data Storage Keys (for local backup)
 const STORAGE_KEY = 'housewarmingInvitees';
+const HOSTS_STORAGE_KEY = 'housewarmingHosts';
 
 // Global Variables
 let guests = [];
+let hosts = [];
 let deleteTargetId = null;
 let isOnline = navigator.onLine;
 
@@ -34,7 +37,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Setup Firebase Real-time Listeners
 function setupFirebaseListeners() {
-    // Listen for data changes in real-time
+    // Listen for guests data changes
     guestsRef.on('value', (snapshot) => {
         const data = snapshot.val();
         if (data) {
@@ -45,18 +48,31 @@ function setupFirebaseListeners() {
         } else {
             guests = [];
         }
-
-        // Also save to localStorage as backup
         localStorage.setItem(STORAGE_KEY, JSON.stringify(guests));
-
         renderGuestTable();
         updateDashboard();
-        showToast('Data synced from cloud', 'success');
     }, (error) => {
-        console.error('Firebase read error:', error);
-        // Fallback to localStorage
+        console.error('Firebase guests read error:', error);
         loadGuestsFromLocalStorage();
-        showToast('Offline mode - using local data', 'error');
+    });
+
+    // Listen for hosts data changes
+    hostsRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            hosts = Object.keys(data).map(key => ({
+                ...data[key],
+                firebaseKey: key
+            }));
+        } else {
+            hosts = [];
+        }
+        localStorage.setItem(HOSTS_STORAGE_KEY, JSON.stringify(hosts));
+        renderHostDropdowns();
+        renderHostList();
+    }, (error) => {
+        console.error('Firebase hosts read error:', error);
+        loadHostsFromLocalStorage();
     });
 }
 
@@ -66,6 +82,13 @@ function loadGuestsFromLocalStorage() {
     guests = stored ? JSON.parse(stored) : [];
     renderGuestTable();
     updateDashboard();
+}
+
+function loadHostsFromLocalStorage() {
+    const stored = localStorage.getItem(HOSTS_STORAGE_KEY);
+    hosts = stored ? JSON.parse(stored) : [];
+    renderHostDropdowns();
+    renderHostList();
 }
 
 // Setup Online/Offline Status
@@ -85,7 +108,6 @@ function setupOnlineStatusListeners() {
 
 // Show sync status in UI
 function showSyncStatus() {
-    // Update sidebar or header to show sync status
     const logo = document.querySelector('.sidebar-logo');
     if (logo) {
         logo.innerHTML = isOnline ?
@@ -96,14 +118,11 @@ function showSyncStatus() {
 
 // Setup Event Listeners
 function setupEventListeners() {
-    // Search functionality
     document.getElementById('searchInput').addEventListener('input', filterAndRenderTable);
-
-    // Filter dropdowns
     document.getElementById('filterRsvp').addEventListener('change', filterAndRenderTable);
     document.getElementById('filterFood').addEventListener('change', filterAndRenderTable);
+    document.getElementById('filterHost').addEventListener('change', filterAndRenderTable);
 
-    // Close modal on outside click
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', function(e) {
             if (e.target === this) {
@@ -112,7 +131,6 @@ function setupEventListeners() {
         });
     });
 
-    // Keyboard shortcuts
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             document.querySelectorAll('.modal.show').forEach(modal => {
@@ -122,29 +140,184 @@ function setupEventListeners() {
     });
 }
 
-// Save to Firebase (and localStorage as backup)
+// ==================== HOST MANAGEMENT ====================
+
+function renderHostDropdowns() {
+    const relativeOfSelect = document.getElementById('relativeOf');
+    const filterHostSelect = document.getElementById('filterHost');
+
+    // Update guest form dropdown
+    if (relativeOfSelect) {
+        const currentValue = relativeOfSelect.value;
+        relativeOfSelect.innerHTML = '<option value="">Select Host</option>';
+        hosts.forEach(host => {
+            relativeOfSelect.innerHTML += `<option value="${host.name}">${host.name}</option>`;
+        });
+        if (currentValue) relativeOfSelect.value = currentValue;
+    }
+
+    // Update filter dropdown
+    if (filterHostSelect) {
+        const currentFilter = filterHostSelect.value;
+        filterHostSelect.innerHTML = '<option value="">All Hosts</option>';
+        hosts.forEach(host => {
+            filterHostSelect.innerHTML += `<option value="${host.name}">${host.name}</option>`;
+        });
+        if (currentFilter) filterHostSelect.value = currentFilter;
+    }
+}
+
+function renderHostList() {
+    const hostListDiv = document.getElementById('hostList');
+    if (!hostListDiv) return;
+
+    if (hosts.length === 0) {
+        hostListDiv.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">No hosts added yet. Add your first host above.</p>';
+        return;
+    }
+
+    hostListDiv.innerHTML = hosts.map(host => {
+        const guestCount = guests.filter(g => g.relativeOf === host.name).length;
+        return `
+            <div class="host-item">
+                <div>
+                    <span class="host-item-name">${host.name}</span>
+                    <span class="host-item-count">(${guestCount} guests)</span>
+                </div>
+                <div class="host-item-actions">
+                    <button class="btn btn-small btn-danger" onclick="deleteHost('${host.firebaseKey}', '${host.name}')">Delete</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function openHostModal() {
+    renderHostList();
+    openModal('hostModal');
+}
+
+function addHost() {
+    const nameInput = document.getElementById('newHostName');
+    const name = nameInput.value.trim();
+
+    if (!name) {
+        showToast('Please enter a host name', 'error');
+        return;
+    }
+
+    // Check for duplicate
+    if (hosts.some(h => h.name.toLowerCase() === name.toLowerCase())) {
+        showToast('This host already exists', 'error');
+        return;
+    }
+
+    const hostData = {
+        name: name,
+        createdAt: new Date().toISOString()
+    };
+
+    hostsRef.push(hostData)
+        .then(() => {
+            showToast('Host added successfully!', 'success');
+            nameInput.value = '';
+        })
+        .catch((error) => {
+            console.error('Firebase host add error:', error);
+            // Fallback: save locally
+            hosts.push({ ...hostData, id: generateId() });
+            localStorage.setItem(HOSTS_STORAGE_KEY, JSON.stringify(hosts));
+            renderHostDropdowns();
+            renderHostList();
+            showToast('Host added locally', 'success');
+            nameInput.value = '';
+        });
+}
+
+function deleteHost(firebaseKey, hostName) {
+    const guestCount = guests.filter(g => g.relativeOf === hostName).length;
+    if (guestCount > 0) {
+        showToast(`Cannot delete: ${guestCount} guests are linked to this host`, 'error');
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to delete "${hostName}"?`)) return;
+
+    hostsRef.child(firebaseKey).remove()
+        .then(() => {
+            showToast('Host deleted successfully!', 'success');
+        })
+        .catch((error) => {
+            console.error('Firebase host delete error:', error);
+            showToast('Failed to delete host', 'error');
+        });
+}
+
+function openAddHostInline() {
+    openModal('addHostInlineModal');
+    document.getElementById('inlineHostName').value = '';
+    document.getElementById('inlineHostName').focus();
+}
+
+function addHostInline() {
+    const nameInput = document.getElementById('inlineHostName');
+    const name = nameInput.value.trim();
+
+    if (!name) {
+        showToast('Please enter a host name', 'error');
+        return;
+    }
+
+    if (hosts.some(h => h.name.toLowerCase() === name.toLowerCase())) {
+        showToast('This host already exists', 'error');
+        return;
+    }
+
+    const hostData = {
+        name: name,
+        createdAt: new Date().toISOString()
+    };
+
+    hostsRef.push(hostData)
+        .then(() => {
+            showToast('Host added successfully!', 'success');
+            closeModal('addHostInlineModal');
+            // Set the newly added host as selected
+            setTimeout(() => {
+                document.getElementById('relativeOf').value = name;
+            }, 500);
+        })
+        .catch((error) => {
+            console.error('Firebase host add error:', error);
+            hosts.push({ ...hostData, id: generateId() });
+            localStorage.setItem(HOSTS_STORAGE_KEY, JSON.stringify(hosts));
+            renderHostDropdowns();
+            closeModal('addHostInlineModal');
+            setTimeout(() => {
+                document.getElementById('relativeOf').value = name;
+            }, 100);
+            showToast('Host added locally', 'success');
+        });
+}
+
+// ==================== GUEST MANAGEMENT ====================
+
 function saveGuests() {
-    // Save to localStorage as backup
     localStorage.setItem(STORAGE_KEY, JSON.stringify(guests));
 }
 
-// Save single guest to Firebase
 function saveGuestToFirebase(guestData) {
     if (guestData.firebaseKey) {
-        // Update existing
         return guestsRef.child(guestData.firebaseKey).set(guestData);
     } else {
-        // Add new
         return guestsRef.push(guestData);
     }
 }
 
-// Delete guest from Firebase
 function deleteGuestFromFirebase(firebaseKey) {
     return guestsRef.child(firebaseKey).remove();
 }
 
-// Generate Unique ID
 function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
@@ -155,6 +328,8 @@ function openAddModal() {
     document.getElementById('guestForm').reset();
     document.getElementById('guestId').value = '';
     document.getElementById('giftDescGroup').style.display = 'none';
+    document.getElementById('foodPref').value = 'Regular'; // Default
+    renderHostDropdowns();
     openModal('guestModal');
 }
 
@@ -166,15 +341,17 @@ function openEditModal(id) {
     document.getElementById('guestId').value = guest.id;
     document.getElementById('firstName').value = guest.firstName;
     document.getElementById('surname').value = guest.surname;
+    document.getElementById('relativeOf').value = guest.relativeOf || '';
     document.getElementById('members').value = guest.members;
     document.getElementById('whatsapp').value = guest.whatsapp;
-    document.getElementById('foodPref').value = guest.foodPref;
+    document.getElementById('foodPref').value = guest.foodPref || 'Regular';
     document.getElementById('rsvpStatus').value = guest.rsvpStatus;
     document.getElementById('giftGiven').checked = guest.giftGiven;
     document.getElementById('giftDescription').value = guest.giftDescription || '';
     document.getElementById('notes').value = guest.notes || '';
 
     toggleGiftDescription();
+    renderHostDropdowns();
     openModal('guestModal');
 }
 
@@ -196,13 +373,11 @@ function closeModal(modalId) {
     document.body.style.overflow = '';
 }
 
-// Toggle Gift Description Field
 function toggleGiftDescription() {
     const giftGiven = document.getElementById('giftGiven').checked;
     document.getElementById('giftDescGroup').style.display = giftGiven ? 'block' : 'none';
 }
 
-// Save Guest (Add or Update)
 function saveGuest(event) {
     event.preventDefault();
 
@@ -213,9 +388,10 @@ function saveGuest(event) {
         id: id || generateId(),
         firstName: document.getElementById('firstName').value.trim(),
         surname: document.getElementById('surname').value.trim(),
+        relativeOf: document.getElementById('relativeOf').value,
         members: parseInt(document.getElementById('members').value) || 1,
         whatsapp: document.getElementById('whatsapp').value.trim(),
-        foodPref: document.getElementById('foodPref').value,
+        foodPref: document.getElementById('foodPref').value || 'Regular',
         rsvpStatus: document.getElementById('rsvpStatus').value,
         giftGiven: document.getElementById('giftGiven').checked,
         giftDescription: document.getElementById('giftDescription').value.trim(),
@@ -224,18 +400,20 @@ function saveGuest(event) {
         updatedAt: new Date().toISOString()
     };
 
-    // Keep firebase key if editing
     if (existingGuest?.firebaseKey) {
         guestData.firebaseKey = existingGuest.firebaseKey;
     }
 
-    // Validate phone number
     if (!/^\d{10}$/.test(guestData.whatsapp)) {
         showToast('Please enter a valid 10-digit mobile number', 'error');
         return;
     }
 
-    // Save to Firebase
+    if (!guestData.relativeOf) {
+        showToast('Please select a host (Relative of whom)', 'error');
+        return;
+    }
+
     saveGuestToFirebase(guestData)
         .then(() => {
             showToast(id ? 'Guest updated successfully!' : 'Guest added successfully!', 'success');
@@ -243,7 +421,6 @@ function saveGuest(event) {
         })
         .catch((error) => {
             console.error('Firebase save error:', error);
-            // Fallback: save locally
             if (id) {
                 const index = guests.findIndex(g => g.id === id);
                 if (index !== -1) guests[index] = guestData;
@@ -258,7 +435,6 @@ function saveGuest(event) {
         });
 }
 
-// Delete Guest
 function deleteGuest(id) {
     const guest = guests.find(g => g.id === id);
     if (!guest) return;
@@ -275,7 +451,6 @@ function confirmDelete() {
     if (!guest) return;
 
     if (guest.firebaseKey) {
-        // Delete from Firebase
         deleteGuestFromFirebase(guest.firebaseKey)
             .then(() => {
                 showToast('Guest deleted successfully!', 'success');
@@ -284,7 +459,6 @@ function confirmDelete() {
             })
             .catch((error) => {
                 console.error('Firebase delete error:', error);
-                // Fallback: delete locally
                 guests = guests.filter(g => g.id !== deleteTargetId);
                 saveGuests();
                 renderGuestTable();
@@ -294,7 +468,6 @@ function confirmDelete() {
                 deleteTargetId = null;
             });
     } else {
-        // Delete locally only
         guests = guests.filter(g => g.id !== deleteTargetId);
         saveGuests();
         renderGuestTable();
@@ -305,7 +478,8 @@ function confirmDelete() {
     }
 }
 
-// Render Guest Table
+// ==================== RENDER & FILTER ====================
+
 function renderGuestTable() {
     const filteredGuests = getFilteredGuests();
     const tbody = document.getElementById('guestTableBody');
@@ -326,13 +500,14 @@ function renderGuestTable() {
         <tr>
             <td>${index + 1}</td>
             <td><strong>${guest.firstName} ${guest.surname}</strong></td>
+            <td><span class="relative-badge">${guest.relativeOf || '-'}</span></td>
             <td>${guest.members}</td>
             <td>
                 <a href="https://wa.me/91${guest.whatsapp}" target="_blank" class="whatsapp-link">
                     +91 ${formatPhone(guest.whatsapp)}
                 </a>
             </td>
-            <td><span class="badge badge-${guest.foodPref.toLowerCase().replace('-', '')}">${guest.foodPref}</span></td>
+            <td><span class="badge badge-${(guest.foodPref || 'Regular').toLowerCase()}">${guest.foodPref || 'Regular'}</span></td>
             <td><span class="badge badge-${guest.rsvpStatus.toLowerCase()}">${guest.rsvpStatus}</span></td>
             <td>
                 ${guest.giftGiven ? `
@@ -342,7 +517,6 @@ function renderGuestTable() {
                     </div>
                 ` : 'No'}
             </td>
-            <td>${guest.notes || '-'}</td>
             <td>
                 <div class="action-cell">
                     <button class="action-btn call" onclick="openWhatsApp('${guest.whatsapp}')" title="WhatsApp">&#128222;</button>
@@ -354,38 +528,39 @@ function renderGuestTable() {
     `).join('');
 }
 
-// Format Phone Number for Display
 function formatPhone(phone) {
     if (phone.length !== 10) return phone;
     return `${phone.substring(0, 5)} ${phone.substring(5)}`;
 }
 
-// Get Filtered Guests
 function getFilteredGuests() {
     const searchTerm = document.getElementById('searchInput').value.toLowerCase();
     const rsvpFilter = document.getElementById('filterRsvp').value;
     const foodFilter = document.getElementById('filterFood').value;
+    const hostFilter = document.getElementById('filterHost').value;
 
     return guests.filter(guest => {
         const matchesSearch = !searchTerm ||
             guest.firstName.toLowerCase().includes(searchTerm) ||
             guest.surname.toLowerCase().includes(searchTerm) ||
             guest.whatsapp.includes(searchTerm) ||
+            (guest.relativeOf && guest.relativeOf.toLowerCase().includes(searchTerm)) ||
             (guest.notes && guest.notes.toLowerCase().includes(searchTerm));
 
         const matchesRsvp = !rsvpFilter || guest.rsvpStatus === rsvpFilter;
         const matchesFood = !foodFilter || guest.foodPref === foodFilter;
+        const matchesHost = !hostFilter || guest.relativeOf === hostFilter;
 
-        return matchesSearch && matchesRsvp && matchesFood;
+        return matchesSearch && matchesRsvp && matchesFood && matchesHost;
     });
 }
 
-// Filter and Render Table
 function filterAndRenderTable() {
     renderGuestTable();
 }
 
-// Update Dashboard Statistics
+// ==================== DASHBOARD ====================
+
 function updateDashboard() {
     const stats = {
         totalFamilies: guests.length,
@@ -393,33 +568,28 @@ function updateDashboard() {
         confirmed: guests.filter(g => g.rsvpStatus === 'Confirmed').length,
         pending: guests.filter(g => g.rsvpStatus === 'Pending').length,
         declined: guests.filter(g => g.rsvpStatus === 'Declined').length,
-        veg: guests.filter(g => g.foodPref === 'Veg').reduce((sum, g) => sum + g.members, 0),
-        nonVeg: guests.filter(g => g.foodPref === 'Non-Veg').reduce((sum, g) => sum + g.members, 0),
-        jain: guests.filter(g => g.foodPref === 'Jain').reduce((sum, g) => sum + g.members, 0),
+        regular: guests.filter(g => (g.foodPref || 'Regular') === 'Regular').reduce((sum, g) => sum + g.members, 0),
+        swaminarayan: guests.filter(g => g.foodPref === 'Swaminarayan').reduce((sum, g) => sum + g.members, 0),
         gifts: guests.filter(g => g.giftGiven).length
     };
 
-    // Main dashboard cards
     document.getElementById('totalFamilies').textContent = stats.totalFamilies;
     document.getElementById('totalGuests').textContent = stats.totalGuests;
     document.getElementById('confirmedCount').textContent = stats.confirmed;
     document.getElementById('pendingCount').textContent = stats.pending;
 
-    // Food preference counts
-    document.getElementById('vegCount').textContent = stats.veg;
-    document.getElementById('nonVegCount').textContent = stats.nonVeg;
-    document.getElementById('jainCount').textContent = stats.jain;
+    document.getElementById('regularCount').textContent = stats.regular;
+    document.getElementById('swaminarayanCount').textContent = stats.swaminarayan;
 
-    // RSVP status panel
     document.getElementById('statusConfirmed').textContent = stats.confirmed;
     document.getElementById('statusPending').textContent = stats.pending;
     document.getElementById('statusDeclined').textContent = stats.declined;
 
-    // Gift tracker
     document.getElementById('giftsCount').textContent = stats.gifts;
 }
 
-// WhatsApp Operations
+// ==================== WHATSAPP ====================
+
 function openWhatsApp(phone) {
     const message = encodeURIComponent('Namaste! You are cordially invited to our Housewarming ceremony. We look forward to your presence.');
     window.open(`https://wa.me/91${phone}?text=${message}`, '_blank');
@@ -435,7 +605,6 @@ function copyAllWhatsappNumbers() {
     navigator.clipboard.writeText(numbers).then(() => {
         showToast(`${guests.length} WhatsApp numbers copied to clipboard!`, 'success');
     }).catch(() => {
-        // Fallback for older browsers
         const textarea = document.createElement('textarea');
         textarea.value = numbers;
         document.body.appendChild(textarea);
@@ -446,11 +615,13 @@ function copyAllWhatsappNumbers() {
     });
 }
 
-// Export Functions
+// ==================== EXPORT ====================
+
 function getSelectedColumns() {
     return {
         sno: document.getElementById('expSno').checked,
         name: document.getElementById('expName').checked,
+        relativeOf: document.getElementById('expRelativeOf').checked,
         members: document.getElementById('expMembers').checked,
         whatsapp: document.getElementById('expWhatsapp').checked,
         food: document.getElementById('expFood').checked,
@@ -471,19 +642,20 @@ function exportToExcel() {
         const row = {};
         if (columns.sno) row['S.No'] = index + 1;
         if (columns.name) row['Family Head Name'] = `${guest.firstName} ${guest.surname}`;
+        if (columns.relativeOf) row['Relative Of'] = guest.relativeOf || '-';
         if (columns.members) row['Members'] = guest.members;
         if (columns.whatsapp) row['WhatsApp'] = `+91 ${formatPhone(guest.whatsapp)}`;
-        if (columns.food) row['Food Preference'] = guest.foodPref;
+        if (columns.food) row['Food Preference'] = guest.foodPref || 'Regular';
         if (columns.rsvp) row['RSVP Status'] = guest.rsvpStatus;
         if (columns.gift) row['Gift'] = guest.giftGiven ? (guest.giftDescription || 'Yes') : 'No';
         if (columns.notes) row['Notes'] = guest.notes || '';
         return row;
     });
 
-    // Add summary row
     const summaryRow = {};
     if (columns.sno) summaryRow['S.No'] = '';
     if (columns.name) summaryRow['Family Head Name'] = `Total: ${guests.length} Families`;
+    if (columns.relativeOf) summaryRow['Relative Of'] = '';
     if (columns.members) summaryRow['Members'] = guests.reduce((sum, g) => sum + g.members, 0);
     if (columns.whatsapp) summaryRow['WhatsApp'] = '';
     if (columns.food) summaryRow['Food Preference'] = '';
@@ -496,7 +668,6 @@ function exportToExcel() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Invitee List');
 
-    // Auto-width columns
     const colWidths = Object.keys(data[0] || {}).map(key => ({
         wch: Math.max(key.length, ...data.map(row => String(row[key] || '').length)) + 2
     }));
@@ -514,44 +685,41 @@ function exportToPDF() {
     }
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF('landscape');
     const columns = getSelectedColumns();
 
-    // Title
     doc.setFontSize(18);
-    doc.setTextColor(230, 81, 0);
+    doc.setTextColor(124, 58, 237);
     doc.text('Housewarming Invitee List', 14, 22);
 
     doc.setFontSize(10);
     doc.setTextColor(100);
     doc.text(`Generated on: ${new Date().toLocaleDateString('en-IN')}`, 14, 30);
 
-    // Summary
     doc.setFontSize(11);
     doc.setTextColor(0);
     const totalGuests = guests.reduce((sum, g) => sum + g.members, 0);
-    doc.text(`Total Families: ${guests.length} | Total Guests: ${totalGuests}`, 14, 40);
+    doc.text(`Total Families: ${guests.length} | Total Guests: ${totalGuests}`, 14, 38);
 
-    // Table headers and data
     const headers = [];
-    const columnKeys = [];
-
-    if (columns.sno) { headers.push('S.No'); columnKeys.push('sno'); }
-    if (columns.name) { headers.push('Family Head'); columnKeys.push('name'); }
-    if (columns.members) { headers.push('Members'); columnKeys.push('members'); }
-    if (columns.whatsapp) { headers.push('WhatsApp'); columnKeys.push('whatsapp'); }
-    if (columns.food) { headers.push('Food'); columnKeys.push('food'); }
-    if (columns.rsvp) { headers.push('RSVP'); columnKeys.push('rsvp'); }
-    if (columns.gift) { headers.push('Gift'); columnKeys.push('gift'); }
-    if (columns.notes) { headers.push('Notes'); columnKeys.push('notes'); }
+    if (columns.sno) headers.push('S.No');
+    if (columns.name) headers.push('Family Head');
+    if (columns.relativeOf) headers.push('Relative Of');
+    if (columns.members) headers.push('Members');
+    if (columns.whatsapp) headers.push('WhatsApp');
+    if (columns.food) headers.push('Food');
+    if (columns.rsvp) headers.push('RSVP');
+    if (columns.gift) headers.push('Gift');
+    if (columns.notes) headers.push('Notes');
 
     const tableData = guests.map((guest, index) => {
         const row = [];
         if (columns.sno) row.push(index + 1);
         if (columns.name) row.push(`${guest.firstName} ${guest.surname}`);
+        if (columns.relativeOf) row.push(guest.relativeOf || '-');
         if (columns.members) row.push(guest.members);
         if (columns.whatsapp) row.push(`+91 ${guest.whatsapp}`);
-        if (columns.food) row.push(guest.foodPref);
+        if (columns.food) row.push(guest.foodPref || 'Regular');
         if (columns.rsvp) row.push(guest.rsvpStatus);
         if (columns.gift) row.push(guest.giftGiven ? (guest.giftDescription || 'Yes') : 'No');
         if (columns.notes) row.push(guest.notes || '-');
@@ -561,19 +729,10 @@ function exportToPDF() {
     doc.autoTable({
         head: [headers],
         body: tableData,
-        startY: 48,
-        styles: {
-            fontSize: 9,
-            cellPadding: 3
-        },
-        headStyles: {
-            fillColor: [230, 81, 0],
-            textColor: 255,
-            fontStyle: 'bold'
-        },
-        alternateRowStyles: {
-            fillColor: [255, 248, 240]
-        }
+        startY: 45,
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [124, 58, 237], textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [248, 250, 252] }
     });
 
     doc.save(`Housewarming_Invitees_${getDateString()}.pdf`);
@@ -591,7 +750,7 @@ function exportStickerList() {
     const doc = new jsPDF();
 
     doc.setFontSize(16);
-    doc.setTextColor(230, 81, 0);
+    doc.setTextColor(124, 58, 237);
     doc.text('Sticker List - Family Head Names', 14, 20);
 
     doc.setFontSize(10);
@@ -608,20 +767,9 @@ function exportStickerList() {
         head: [['S.No', 'Name for Sticker', '']],
         body: stickerData,
         startY: 35,
-        styles: {
-            fontSize: 11,
-            cellPadding: 5
-        },
-        headStyles: {
-            fillColor: [230, 81, 0],
-            textColor: 255,
-            fontStyle: 'bold'
-        },
-        columnStyles: {
-            0: { cellWidth: 20 },
-            1: { cellWidth: 100 },
-            2: { cellWidth: 40 }
-        }
+        styles: { fontSize: 11, cellPadding: 5 },
+        headStyles: { fillColor: [124, 58, 237], textColor: 255, fontStyle: 'bold' },
+        columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 100 }, 2: { cellWidth: 40 } }
     });
 
     doc.save(`Sticker_List_${getDateString()}.pdf`);
@@ -629,17 +777,19 @@ function exportStickerList() {
     closeModal('exportModal');
 }
 
-// Backup and Restore
+// ==================== BACKUP & RESTORE ====================
+
 function downloadBackup() {
-    if (guests.length === 0) {
+    if (guests.length === 0 && hosts.length === 0) {
         showToast('No data to backup', 'error');
         return;
     }
 
     const backup = {
-        version: '1.0',
+        version: '2.0',
         exportDate: new Date().toISOString(),
-        data: guests
+        guests: guests,
+        hosts: hosts
     };
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
@@ -663,31 +813,42 @@ function restoreBackup(event) {
         try {
             const backup = JSON.parse(e.target.result);
 
-            if (!backup.data || !Array.isArray(backup.data)) {
+            // Support both old and new backup formats
+            const guestsData = backup.guests || backup.data || [];
+            const hostsData = backup.hosts || [];
+
+            if (!Array.isArray(guestsData)) {
                 throw new Error('Invalid backup file format');
             }
 
-            // Clear existing Firebase data and upload backup
-            guestsRef.remove().then(() => {
-                // Upload each guest to Firebase
-                const promises = backup.data.map(guest => {
-                    // Remove old firebase key if exists
+            // Restore to Firebase
+            Promise.all([
+                guestsRef.remove(),
+                hostsRef.remove()
+            ]).then(() => {
+                const guestPromises = guestsData.map(guest => {
                     delete guest.firebaseKey;
                     return guestsRef.push(guest);
                 });
+                const hostPromises = hostsData.map(host => {
+                    delete host.firebaseKey;
+                    return hostsRef.push(host);
+                });
 
-                return Promise.all(promises);
+                return Promise.all([...guestPromises, ...hostPromises]);
             }).then(() => {
-                showToast(`Restored ${backup.data.length} guests to cloud!`, 'success');
+                showToast(`Restored ${guestsData.length} guests and ${hostsData.length} hosts!`, 'success');
                 closeModal('backupModal');
             }).catch((error) => {
                 console.error('Firebase restore error:', error);
-                // Fallback: restore locally
-                guests = backup.data;
+                guests = guestsData;
+                hosts = hostsData;
                 saveGuests();
+                localStorage.setItem(HOSTS_STORAGE_KEY, JSON.stringify(hosts));
                 renderGuestTable();
+                renderHostDropdowns();
                 updateDashboard();
-                showToast(`Restored ${guests.length} guests locally!`, 'success');
+                showToast('Restored locally!', 'success');
                 closeModal('backupModal');
             });
 
@@ -696,12 +857,11 @@ function restoreBackup(event) {
         }
     };
     reader.readAsText(file);
-
-    // Reset file input
     event.target.value = '';
 }
 
-// Utility Functions
+// ==================== UTILITIES ====================
+
 function getDateString() {
     return new Date().toISOString().split('T')[0];
 }
