@@ -21,6 +21,12 @@ let hostsRef = null;
 let eventsRef = null;
 let templatesRef = null;
 
+// Collaboration: maps shared eventId -> ownerUid
+let sharedEventOwners = {};
+// All events including shared ones for rendering
+let allEvents = [];
+let sharedEventsLoaded = false;
+
 // Data Storage Keys (for local backup)
 const STORAGE_KEY_BASE = 'inviteeProGuests';
 const HOSTS_STORAGE_KEY_BASE = 'inviteeProHosts';
@@ -268,9 +274,17 @@ function setupEventListeners() {
     if (filterHost) filterHost.addEventListener('change', filterAndRenderTable);
     if (eventSelect) {
         eventSelect.addEventListener('change', (event) => {
-            const eventId = event.target.value;
-            if (eventId) {
-                selectEvent(eventId);
+            const val = event.target.value;
+            if (!val) return;
+
+            // Check if this is a shared event (format: shared_{ownerUid}_{eventId})
+            if (val.startsWith('shared_')) {
+                const parts = val.split('_');
+                const ownerUid = parts[1];
+                const eventId = parts.slice(2).join('_');
+                selectSharedEvent(ownerUid, eventId);
+            } else {
+                selectEvent(val);
             }
         });
     }
@@ -324,16 +338,71 @@ function loadHostsFromLocal() {
     }
 }
 
-function renderEventOptions(events) {
+function renderEventOptions(ownEvents) {
     const eventSelect = document.getElementById('eventSelect');
     if (!eventSelect) return;
     eventSelect.innerHTML = '<option value="">Select Event</option>';
-    events.forEach((event) => {
-        const option = document.createElement('option');
-        option.value = event.id;
-        option.textContent = event.meta?.name || 'Untitled Event';
-        eventSelect.appendChild(option);
+
+    // Combine own events + shared events
+    allEvents = [];
+
+    // Add own events
+    ownEvents.forEach((event) => {
+        allEvents.push({ ...event, isShared: false });
     });
+
+    // Add shared events (avoid duplicates)
+    Object.keys(sharedEventOwners).forEach((key) => {
+        const shared = sharedEventOwners[key];
+        const alreadyExists = allEvents.some(e => e.id === shared.eventId);
+        if (!alreadyExists) {
+            allEvents.push({
+                id: shared.eventId,
+                meta: { name: shared.eventName },
+                isShared: true,
+                ownerUid: shared.ownerUid,
+                ownerName: shared.ownerName
+            });
+        }
+    });
+
+    // Render own events
+    const ownGroup = ownEvents.length > 0;
+    if (ownGroup && Object.keys(sharedEventOwners).length > 0) {
+        const ownOptGroup = document.createElement('optgroup');
+        ownOptGroup.label = 'My Events';
+        ownEvents.forEach((event) => {
+            const option = document.createElement('option');
+            option.value = event.id;
+            option.textContent = event.meta?.name || 'Untitled Event';
+            ownOptGroup.appendChild(option);
+        });
+        eventSelect.appendChild(ownOptGroup);
+
+        // Render shared events
+        const sharedOptGroup = document.createElement('optgroup');
+        sharedOptGroup.label = 'Shared With Me';
+        Object.keys(sharedEventOwners).forEach((key) => {
+            const shared = sharedEventOwners[key];
+            const alreadyOwn = ownEvents.some(e => e.id === shared.eventId);
+            if (!alreadyOwn) {
+                const option = document.createElement('option');
+                option.value = `shared_${shared.ownerUid}_${shared.eventId}`;
+                option.textContent = `${shared.eventName} (by ${shared.ownerName})`;
+                sharedOptGroup.appendChild(option);
+            }
+        });
+        if (sharedOptGroup.children.length > 0) {
+            eventSelect.appendChild(sharedOptGroup);
+        }
+    } else {
+        ownEvents.forEach((event) => {
+            const option = document.createElement('option');
+            option.value = event.id;
+            option.textContent = event.meta?.name || 'Untitled Event';
+            eventSelect.appendChild(option);
+        });
+    }
 }
 
 function updateEventHeader(meta) {
@@ -350,13 +419,14 @@ function updateEventHeader(meta) {
     }
     const date = meta.date ? new Date(meta.date).toLocaleDateString() : '';
     const venue = meta.venue || '';
+    const sharedLabel = meta.isShared ? ' (Shared)' : '';
     const parts = [date, venue].filter(Boolean).join(' • ');
-    titleEl.textContent = meta.name || 'InviteePro';
-    subtitleEl.textContent = parts || 'Manage invitees for this event.';
+    titleEl.textContent = (meta.name || 'InviteePro') + sharedLabel;
+    subtitleEl.textContent = parts || (meta.isShared ? 'Collaborating on this event' : 'Manage invitees for this event.');
 
     // Update current event name in settings sheet
     if (currentEventNameEl) {
-        currentEventNameEl.textContent = meta.name || 'No event selected';
+        currentEventNameEl.textContent = (meta.name || 'No event selected') + sharedLabel;
     }
 }
 
@@ -447,7 +517,7 @@ function saveEventMeta() {
 function loadEventsAndRestoreSelection() {
     eventsRef.on('value', (snap) => {
         // Read stored event ID inside the callback so it gets the latest value
-        const storedEventId = localStorage.getItem(getEventStorageKey());
+        const storedSelection = localStorage.getItem(getEventStorageKey());
 
         const events = [];
         if (snap.exists()) {
@@ -461,7 +531,23 @@ function loadEventsAndRestoreSelection() {
 
         renderEventOptions(events);
 
-        if (events.length === 0) {
+        // If we have a shared event selected, keep it
+        if (currentEventMeta?.isShared && currentEventId) {
+            return;
+        }
+
+        // Check if stored selection is a shared event
+        if (storedSelection && storedSelection.startsWith('shared_') && events.length >= 0) {
+            const parts = storedSelection.split('_');
+            const ownerUid = parts[1];
+            const eventId = parts.slice(2).join('_');
+            if (!currentEventId || currentEventId !== eventId) {
+                selectSharedEvent(ownerUid, eventId);
+            }
+            return;
+        }
+
+        if (events.length === 0 && Object.keys(sharedEventOwners).length === 0) {
             currentEventId = null;
             currentEventMeta = null;
             guests = [];
@@ -473,20 +559,24 @@ function loadEventsAndRestoreSelection() {
             return;
         }
 
+        if (events.length === 0) {
+            // No own events but might have shared events - don't auto-select
+            updateEventHeader(null);
+            return;
+        }
+
         // If we already have a current event selected, keep it (unless it no longer exists)
         const currentEventExists = events.find((ev) => ev.id === currentEventId);
         if (currentEventId && currentEventExists) {
-            // Just update the meta in case it changed
             currentEventMeta = currentEventExists.meta;
             updateEventHeader(currentEventMeta);
-            // Update dropdown to show current selection
             const eventSelect = document.getElementById('eventSelect');
             if (eventSelect) eventSelect.value = currentEventId;
             return;
         }
 
         // Otherwise, try to restore from localStorage or pick the first event
-        const targetId = events.find((ev) => ev.id === storedEventId)?.id || events[0].id;
+        const targetId = events.find((ev) => ev.id === storedSelection)?.id || events[0].id;
         const targetMeta = events.find((ev) => ev.id === targetId)?.meta || null;
         const eventSelect = document.getElementById('eventSelect');
         if (eventSelect) eventSelect.value = targetId;
@@ -895,7 +985,6 @@ function toggleCollaborateHint() {
     if (hint) {
         hint.style.display = checkbox && checkbox.checked ? 'block' : 'none';
     }
-    // Make email required when collaboration is checked
     if (emailInput && checkbox) {
         emailInput.required = checkbox.checked;
         if (checkbox.checked) {
@@ -907,28 +996,35 @@ function toggleCollaborateHint() {
     }
 }
 
+function emailToKey(email) {
+    // Firebase keys can't contain . # $ [ ] /
+    return email.toLowerCase().replace(/\./g, ',').replace(/[#$\[\]\/]/g, '_');
+}
+
+// Share an event with a co-host by email
 function shareEventWithCoHost(email, hostName) {
     if (!email || !currentEventId || !currentUserId) return;
 
-    // Store sharing info under a shared-events node keyed by email hash
-    // This allows the co-host to find events shared with them when they log in
     const emailKey = emailToKey(email);
+
+    // Determine the actual owner - if this is already a shared event, use the original owner
+    const ownerUid = currentEventMeta?.ownerUid || currentUserId;
 
     const shareData = {
         eventId: currentEventId,
-        eventName: currentEventMeta?.name || 'Untitled Event',
-        ownerUid: currentUserId,
+        eventName: currentEventMeta?.name?.replace(' (Shared)', '') || 'Untitled Event',
+        ownerUid: ownerUid,
         ownerName: currentUser?.displayName || currentUser?.email || 'Unknown',
         hostName: hostName,
         sharedAt: new Date().toISOString(),
         email: email
     };
 
-    // Write to shared-events path so the co-host can find it
-    database.ref(`shared-events/${emailKey}/${currentUserId}_${currentEventId}`).set(shareData)
+    // Write to shared-events/{emailKey} so the co-host can discover it on login
+    database.ref(`shared-events/${emailKey}/${ownerUid}_${currentEventId}`).set(shareData)
         .then(() => {
-            // Also store in the event's meta who it's shared with
-            database.ref(`users/${currentUserId}/events/${currentEventId}/shared/${emailKey}`).set({
+            // Also record collaborators in the event itself
+            database.ref(`users/${ownerUid}/events/${currentEventId}/collaborators/${emailKey}`).set({
                 email: email,
                 hostName: hostName,
                 sharedAt: new Date().toISOString()
@@ -941,33 +1037,91 @@ function shareEventWithCoHost(email, hostName) {
         });
 }
 
-function emailToKey(email) {
-    // Firebase keys can't contain . # $ [ ] /
-    return email.toLowerCase().replace(/\./g, ',').replace(/[#$\[\]\/]/g, '_');
-}
-
+// Load events shared with the current user (by their email)
 function loadSharedEvents() {
-    if (!currentUser || !currentUser.email) return;
+    if (!currentUser || !currentUser.email) {
+        sharedEventsLoaded = true;
+        return;
+    }
 
     const emailKey = emailToKey(currentUser.email);
     const sharedRef = database.ref(`shared-events/${emailKey}`);
 
     sharedRef.on('value', (snap) => {
-        if (!snap.exists()) return;
+        sharedEventOwners = {};
 
-        const sharedEvents = [];
-        snap.forEach((child) => {
-            sharedEvents.push(child.val());
-        });
-
-        if (sharedEvents.length > 0) {
-            renderSharedEventsBanner(sharedEvents);
+        if (snap.exists()) {
+            snap.forEach((child) => {
+                const data = child.val();
+                // Don't list events the user owns themselves
+                if (data.ownerUid !== currentUserId) {
+                    const key = `${data.ownerUid}_${data.eventId}`;
+                    sharedEventOwners[key] = data;
+                }
+            });
         }
+
+        sharedEventsLoaded = true;
+
+        // Re-render the event dropdown to include shared events
+        if (eventsRef) {
+            eventsRef.once('value').then((evSnap) => {
+                const ownEvents = [];
+                if (evSnap.exists()) {
+                    evSnap.forEach((child) => {
+                        ownEvents.push({
+                            id: child.key,
+                            meta: child.child('meta').val() || {}
+                        });
+                    });
+                }
+                renderEventOptions(ownEvents);
+
+                // Sync dropdown to current selection
+                const eventSelect = document.getElementById('eventSelect');
+                if (eventSelect && currentEventId) {
+                    if (currentEventMeta?.ownerUid && currentEventMeta.ownerUid !== currentUserId) {
+                        eventSelect.value = `shared_${currentEventMeta.ownerUid}_${currentEventId}`;
+                    } else {
+                        eventSelect.value = currentEventId;
+                    }
+                }
+            });
+        }
+
+        // Show shared events banner for easy access
+        renderSharedEventsBanner();
+
+        // Register co-host UID with each shared event owner's data
+        registerCoHostUid();
     });
 }
 
-function renderSharedEventsBanner(sharedEvents) {
+// Register the co-host's UID with the event owner's data so Firebase rules can authorize
+function registerCoHostUid() {
+    if (!currentUserId || !currentUser?.email) return;
+
+    Object.keys(sharedEventOwners).forEach((key) => {
+        const shared = sharedEventOwners[key];
+        const emailKey = emailToKey(currentUser.email);
+        database.ref(`users/${shared.ownerUid}/events/${shared.eventId}/collaborators/${emailKey}/uid`)
+            .set(currentUserId)
+            .catch(() => {
+                // Ignore - might not have write permission yet
+            });
+    });
+}
+
+// Show a banner listing shared events
+function renderSharedEventsBanner() {
+    const keys = Object.keys(sharedEventOwners);
     let banner = document.getElementById('sharedEventsBanner');
+
+    if (keys.length === 0) {
+        if (banner) banner.style.display = 'none';
+        return;
+    }
+
     if (!banner) {
         banner = document.createElement('div');
         banner.id = 'sharedEventsBanner';
@@ -983,45 +1137,74 @@ function renderSharedEventsBanner(sharedEvents) {
         <div class="shared-banner-header">
             <span class="shared-banner-icon">&#129309;</span>
             <strong>Shared With You</strong>
+            <span class="shared-banner-count">${keys.length} event(s)</span>
         </div>
         <div class="shared-banner-list">
-            ${sharedEvents.map(ev => `
-                <div class="shared-event-item" onclick="openSharedEvent('${escapeHtml(ev.ownerUid)}', '${escapeHtml(ev.eventId)}', '${escapeHtml(ev.eventName)}')">
-                    <div class="shared-event-info">
-                        <span class="shared-event-name">${escapeHtml(ev.eventName)}</span>
-                        <span class="shared-event-owner">by ${escapeHtml(ev.ownerName)}</span>
+            ${keys.map(key => {
+                const ev = sharedEventOwners[key];
+                const isActive = currentEventId === ev.eventId && currentEventMeta?.ownerUid === ev.ownerUid;
+                return `
+                    <div class="shared-event-item ${isActive ? 'active' : ''}" onclick="selectSharedEvent('${escapeHtml(ev.ownerUid)}', '${escapeHtml(ev.eventId)}')">
+                        <div class="shared-event-info">
+                            <span class="shared-event-name">${escapeHtml(ev.eventName)}</span>
+                            <span class="shared-event-owner">by ${escapeHtml(ev.ownerName)}</span>
+                        </div>
+                        <span class="shared-event-arrow">${isActive ? '&#10003;' : '&#8250;'}</span>
                     </div>
-                    <span class="shared-event-arrow">&#8250;</span>
-                </div>
-            `).join('')}
+                `;
+            }).join('')}
         </div>
     `;
     banner.style.display = 'block';
 }
 
-async function openSharedEvent(ownerUid, eventId, eventName) {
-    if (!ownerUid || !eventId) return;
+// Select a shared event - points refs to the OWNER's Firebase path for real-time sync
+async function selectSharedEvent(ownerUid, eventId) {
+    if (!ownerUid || !eventId || !currentUserId) return;
 
-    // Detach current listeners
+    // Detach old listeners first
     if (guestsRef) { guestsRef.off(); guestsRef = null; }
     if (hostsRef) { hostsRef.off(); hostsRef = null; }
 
     currentEventId = eventId;
-    currentEventMeta = { name: eventName + ' (Shared)', shared: true, ownerUid: ownerUid };
-    currentEventName = currentEventMeta.name;
+
+    // Fetch the event meta from the owner's data
+    let meta = null;
+    try {
+        const snap = await database.ref(`users/${ownerUid}/events/${eventId}/meta`).get();
+        meta = snap.exists() ? snap.val() : null;
+    } catch (e) {
+        console.error('Failed to load shared event meta:', e);
+    }
+
+    currentEventMeta = meta || {};
+    currentEventMeta.ownerUid = ownerUid; // Track that this is a shared event
+    currentEventMeta.isShared = true;
+    currentEventName = currentEventMeta?.name || 'Shared Event';
+
+    // Save selection
+    localStorage.setItem(getEventStorageKey(), `shared_${ownerUid}_${eventId}`);
 
     updateEventHeader(currentEventMeta);
 
-    // Point refs to the owner's event data (read-only unless Firebase rules allow)
+    // Sync dropdown
+    const eventSelect = document.getElementById('eventSelect');
+    if (eventSelect) eventSelect.value = `shared_${ownerUid}_${eventId}`;
+
+    // Point refs to the OWNER's event data - this is the key for real-time sync
+    // Both the owner and co-host read/write to the same Firebase path
     guestsRef = database.ref(`users/${ownerUid}/events/${eventId}/guests`);
     hostsRef = database.ref(`users/${ownerUid}/events/${eventId}/hosts`);
 
+    // Reset filters and clear data
+    resetEventFilters();
     guests = [];
     hosts = [];
     renderGuestTable();
     renderHostDropdowns();
     updateDashboard();
 
+    // Attach real-time listeners - same data as the owner sees
     guestsRef.on('value', (snap) => {
         if (currentEventId !== eventId) return;
         const data = [];
@@ -1048,7 +1231,28 @@ async function openSharedEvent(ownerUid, eventId, eventName) {
         renderHostList();
     });
 
-    showToast(`Viewing shared event: ${eventName}`, 'success');
+    // Update banner active state
+    renderSharedEventsBanner();
+
+    triggerHaptic('medium');
+    showToast(`Opened shared event: ${currentEventName}`, 'success');
+    console.log('[App] Opened shared event:', eventId, 'Owner:', ownerUid);
+}
+
+// Check if co-host can actually read the shared data (test Firebase rules)
+function verifySharedAccess(ownerUid, eventId) {
+    return database.ref(`users/${ownerUid}/events/${eventId}/meta`).get()
+        .then((snap) => {
+            if (snap.exists()) {
+                return true;
+            }
+            return false;
+        })
+        .catch((error) => {
+            console.warn('[App] Cannot access shared event. Firebase rules may need updating.', error.code);
+            showToast('Cannot access shared event. The event owner may need to update sharing permissions.', 'error');
+            return false;
+        });
 }
 
 function grantCollabAccess(firebaseKey, email, hostName) {
@@ -2425,7 +2629,6 @@ function renderEventListSheet() {
     const emptyState = document.getElementById('eventListEmpty');
     if (!container) return;
 
-    // Get events from Firebase listener cache
     if (!eventsRef) {
         container.innerHTML = '';
         if (emptyState) emptyState.style.display = 'block';
@@ -2433,17 +2636,20 @@ function renderEventListSheet() {
     }
 
     eventsRef.once('value').then((snap) => {
-        const events = [];
+        const ownEvents = [];
         if (snap.exists()) {
             snap.forEach((child) => {
-                events.push({
+                ownEvents.push({
                     id: child.key,
                     meta: child.child('meta').val() || {}
                 });
             });
         }
 
-        if (events.length === 0) {
+        const sharedKeys = Object.keys(sharedEventOwners);
+        const hasEvents = ownEvents.length > 0 || sharedKeys.length > 0;
+
+        if (!hasEvents) {
             container.innerHTML = '';
             if (emptyState) emptyState.style.display = 'block';
             return;
@@ -2451,49 +2657,80 @@ function renderEventListSheet() {
 
         if (emptyState) emptyState.style.display = 'none';
 
-        container.innerHTML = events.map(event => {
-            const meta = event.meta;
-            const isActive = event.id === currentEventId;
-            const dateStr = meta.date ? new Date(meta.date).toLocaleDateString() : '';
-            const venueStr = meta.venue || '';
-            const metaStr = [dateStr, venueStr].filter(Boolean).join(' • ') || 'No date set';
-            const stats = meta.stats || {};
+        let html = '';
 
-            return `
-                <div class="event-list-item ${isActive ? 'active' : ''}" onclick="selectEventFromSheet('${event.id}')">
-                    <div class="event-list-icon">&#127881;</div>
-                    <div class="event-list-info">
-                        <div class="event-list-name">${escapeHtml(meta.name || 'Untitled Event')}</div>
-                        <div class="event-list-meta">${escapeHtml(metaStr)}</div>
-                        <div class="event-list-stats">
-                            <span class="event-list-stat">&#128101; ${stats.totalFamilies || 0} families</span>
-                            <span class="event-list-stat">&#9989; ${stats.confirmed || 0} confirmed</span>
+        // Own events
+        if (ownEvents.length > 0) {
+            if (sharedKeys.length > 0) {
+                html += '<div style="padding:10px 20px;font-size:0.8rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;">My Events</div>';
+            }
+            html += ownEvents.map(event => {
+                const meta = event.meta;
+                const isActive = event.id === currentEventId && !currentEventMeta?.isShared;
+                const dateStr = meta.date ? new Date(meta.date).toLocaleDateString() : '';
+                const venueStr = meta.venue || '';
+                const metaStr = [dateStr, venueStr].filter(Boolean).join(' \u2022 ') || 'No date set';
+                const stats = meta.stats || {};
+
+                return `
+                    <div class="event-list-item ${isActive ? 'active' : ''}" onclick="selectEventFromSheet('${event.id}')">
+                        <div class="event-list-icon">&#127881;</div>
+                        <div class="event-list-info">
+                            <div class="event-list-name">${escapeHtml(meta.name || 'Untitled Event')}</div>
+                            <div class="event-list-meta">${escapeHtml(metaStr)}</div>
+                            <div class="event-list-stats">
+                                <span class="event-list-stat">&#128101; ${stats.totalFamilies || 0} families</span>
+                                <span class="event-list-stat">&#9989; ${stats.confirmed || 0} confirmed</span>
+                            </div>
                         </div>
+                        <span class="event-list-check">&#10003;</span>
                     </div>
-                    <span class="event-list-check">&#10003;</span>
-                </div>
-            `;
-        }).join('');
+                `;
+            }).join('');
+        }
+
+        // Shared events
+        if (sharedKeys.length > 0) {
+            html += '<div style="padding:10px 20px;font-size:0.8rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;">&#129309; Shared With Me</div>';
+            html += sharedKeys.map(key => {
+                const ev = sharedEventOwners[key];
+                const isActive = currentEventId === ev.eventId && currentEventMeta?.ownerUid === ev.ownerUid;
+
+                return `
+                    <div class="event-list-item ${isActive ? 'active' : ''}" onclick="selectSharedEventFromSheet('${escapeHtml(ev.ownerUid)}', '${escapeHtml(ev.eventId)}')">
+                        <div class="event-list-icon" style="background:linear-gradient(135deg,#10b981,#059669);">&#129309;</div>
+                        <div class="event-list-info">
+                            <div class="event-list-name">${escapeHtml(ev.eventName)}</div>
+                            <div class="event-list-meta">Shared by ${escapeHtml(ev.ownerName)}</div>
+                        </div>
+                        <span class="event-list-check">&#10003;</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        container.innerHTML = html;
     });
 }
 
 function selectEventFromSheet(eventId) {
     if (!eventId) return;
 
-    // Update dropdown
     const eventSelect = document.getElementById('eventSelect');
     if (eventSelect) eventSelect.value = eventId;
 
-    // Select the event
     selectEvent(eventId);
-
-    // Close the sheet
     closeBottomSheet('eventSelectorSheet');
 
     // Haptic feedback
     triggerHaptic('medium');
 
     showToast('Event switched!', 'success');
+}
+
+function selectSharedEventFromSheet(ownerUid, eventId) {
+    closeBottomSheet('eventSelectorSheet');
+    selectSharedEvent(ownerUid, eventId);
 }
 
 // ==================== TAB NAVIGATION ====================

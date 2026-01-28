@@ -3633,6 +3633,25 @@ form {
     font-size: 1.2rem;
 }
 
+.shared-event-item.active {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+.shared-event-item.active .shared-event-arrow {
+    color: #10b981;
+}
+
+.shared-banner-count {
+    margin-left: auto;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--bg-color);
+    padding: 2px 10px;
+    border-radius: 10px;
+}
+
 /* Host list collaboration badge */
 .host-collab-badge {
     display: inline-flex;
