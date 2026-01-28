@@ -483,6 +483,7 @@ function loadEventsAndRestoreSelection() {
 
 async function selectEvent(eventId, meta) {
     if (!eventId || !currentUserId) return;
+    const previousEventId = currentEventId;
     currentEventId = eventId;
     if (!meta && eventsRef) {
         try {
@@ -502,6 +503,14 @@ async function selectEvent(eventId, meta) {
     // User-specific paths
     guestsRef = database.ref(`users/${currentUserId}/events/${eventId}/guests`);
     hostsRef = database.ref(`users/${currentUserId}/events/${eventId}/hosts`);
+
+    if (previousEventId && previousEventId !== eventId) {
+        guests = [];
+        hosts = [];
+        renderGuestTable();
+        renderHostDropdowns();
+        updateDashboard();
+    }
 
     loadGuestsFromLocal();
     loadHostsFromLocal();
