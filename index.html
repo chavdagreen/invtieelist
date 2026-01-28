@@ -483,6 +483,26 @@
 
                         <div class="card">
                             <div class="card-header">
+                                <h2><span>&#128222;</span> Call Tracker</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="status-list">
+                                    <div class="status-item">
+                                        <span class="status-dot green"></span>
+                                        <span class="status-label">Calls Done</span>
+                                        <span class="status-count" id="callsCount">0</span>
+                                    </div>
+                                    <div class="status-item">
+                                        <span class="status-dot yellow"></span>
+                                        <span class="status-label">Calls Pending</span>
+                                        <span class="status-count" id="callsPendingCount">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
                                 <h2><span>&#127873;</span> Gift Tracker</h2>
                             </div>
                             <div class="card-body">
@@ -593,6 +613,7 @@
                                     <th>WhatsApp</th>
                                     <th>Food Pref</th>
                                     <th>RSVP</th>
+                                    <th>Called</th>
                                     <th>Gift</th>
                                     <th>Actions</th>
                                 </tr>
@@ -685,6 +706,15 @@
                     </div>
                     <div class="form-group checkbox-group">
                         <label>
+                            <input type="checkbox" id="callDone" onchange="triggerHaptic()">
+                            Call Done
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <label>
                             <input type="checkbox" id="giftGiven" onchange="toggleGiftDescription()">
                             Gift Given
                         </label>
@@ -721,8 +751,10 @@
                     <h3>Add New Host</h3>
                     <div class="add-host-form">
                         <input type="text" id="newHostName" placeholder="Enter host name (e.g., Vivek Chavda)">
+                        <input type="email" id="newHostEmail" placeholder="Email (optional, for co-host access)">
                         <button class="btn btn-primary" onclick="addHost()">Add Host</button>
                     </div>
+                    <p class="helper-text">Co-hosts with email can be invited to help manage the guest list.</p>
                 </div>
                 <hr>
                 <div class="host-list-section">
@@ -848,6 +880,10 @@
                     <label for="inlineHostName">Host Name *</label>
                     <input type="text" id="inlineHostName" placeholder="Enter host name (e.g., Vivek Chavda)">
                 </div>
+                <div class="form-group">
+                    <label for="inlineHostEmail">Email (Optional)</label>
+                    <input type="email" id="inlineHostEmail" placeholder="For co-host collaboration">
+                </div>
                 <div class="form-actions">
                     <button class="btn btn-outline" onclick="closeModal('addHostInlineModal')">Cancel</button>
                     <button class="btn btn-primary" onclick="addHostInline()">Add Host</button>
@@ -944,6 +980,11 @@
                         <label for="newTemplateMessage">Message Template</label>
                         <textarea id="newTemplateMessage" rows="4" placeholder="Hi {name}, you are invited to {event} on {date} at {venue}. Please confirm your attendance."></textarea>
                         <p class="helper-text">Available: {name}, {event}, {date}, {venue}, {members}, {host}</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="newTemplateImage">Image URL (Optional)</label>
+                        <input type="url" id="newTemplateImage" placeholder="https://example.com/invite-card.jpg">
+                        <p class="helper-text">Add invitation card image to share with message</p>
                     </div>
                     <button class="btn btn-primary" onclick="addWhatsappTemplate()">Add Template</button>
                 </div>

@@ -2651,3 +2651,479 @@ form {
         padding: 24px;
     }
 }
+
+/* =========================
+   MOBILE APP-LIKE ENHANCEMENTS
+   ========================= */
+
+/* Prevent text selection on tap (app-like feel) */
+.btn, .action-btn, .nav-item, .quick-action-item, .call-toggle-btn {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Touch feedback for buttons */
+.btn:active, .action-btn:active, .quick-action-item:active {
+    transform: scale(0.97);
+    opacity: 0.9;
+}
+
+/* Call Toggle Button */
+.call-toggle-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    background: var(--bg-color);
+    cursor: pointer;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.call-toggle-btn:hover {
+    border-color: var(--primary-purple);
+    transform: scale(1.1);
+}
+
+.call-toggle-btn.done {
+    background: var(--gradient-green);
+    border-color: #10b981;
+    color: white;
+}
+
+/* Host email badge */
+.host-email-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin-left: 8px;
+}
+
+/* Template image indicator */
+.template-has-image {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    background: rgba(124, 58, 237, 0.1);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    margin-left: 6px;
+}
+
+/* Add host form improvements */
+.add-host-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.add-host-form input {
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    font-size: 0.95rem;
+    font-family: inherit;
+}
+
+.add-host-form .btn {
+    align-self: flex-start;
+}
+
+/* =========================
+   ENHANCED MOBILE RESPONSIVE
+   ========================= */
+
+@media (max-width: 768px) {
+    /* Make the app feel more native */
+    body {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: none;
+    }
+
+    /* Full-width stat cards */
+    .dashboard {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+
+    .stat-card {
+        padding: 14px;
+        min-height: 100px;
+    }
+
+    .stat-card .stat-value {
+        font-size: 1.3rem;
+    }
+
+    .stat-card .stat-label {
+        font-size: 0.75rem;
+    }
+
+    .stat-card .stat-icon {
+        width: 36px;
+        height: 36px;
+        font-size: 1.1rem;
+        top: 12px;
+        right: 12px;
+    }
+
+    /* Better table for mobile */
+    .table-wrapper {
+        border-radius: var(--radius-lg);
+        margin: 0 -8px;
+    }
+
+    table {
+        font-size: 0.85rem;
+    }
+
+    th {
+        padding: 12px 8px;
+        font-size: 0.7rem;
+    }
+
+    td {
+        padding: 10px 8px;
+        font-size: 0.8rem;
+    }
+
+    /* Compact badges on mobile */
+    .badge {
+        padding: 4px 8px;
+        font-size: 0.7rem;
+    }
+
+    .relative-badge {
+        padding: 3px 8px;
+        font-size: 0.7rem;
+    }
+
+    /* WhatsApp button mobile */
+    .whatsapp-btn {
+        padding: 6px 8px;
+        font-size: 0.7rem;
+    }
+
+    /* Action buttons mobile */
+    .action-cell {
+        flex-wrap: nowrap;
+        gap: 4px;
+    }
+
+    .action-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 0.9rem;
+    }
+
+    /* Call toggle button mobile */
+    .call-toggle-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 0.9rem;
+    }
+
+    /* Quick actions grid mobile */
+    .card-body > div[style*="grid"] {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 8px !important;
+    }
+
+    .quick-action-item {
+        padding: 12px;
+        flex-direction: column;
+        text-align: center;
+        gap: 8px;
+    }
+
+    .quick-action-icon {
+        width: 36px;
+        height: 36px;
+        font-size: 1rem;
+    }
+
+    .quick-action-text h4 {
+        font-size: 0.8rem;
+    }
+
+    .quick-action-text p {
+        font-size: 0.7rem;
+        display: none;
+    }
+
+    /* Header mobile improvements */
+    .header-title h1 {
+        font-size: 1.3rem;
+    }
+
+    .header-title p {
+        font-size: 0.8rem;
+    }
+
+    /* Event toolbar mobile */
+    .event-toolbar {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .event-toolbar .select,
+    .event-toolbar .btn {
+        width: 100%;
+    }
+
+    /* Modals full screen on mobile */
+    .modal-content {
+        max-height: 95vh;
+        border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+        margin-top: auto;
+    }
+
+    .modal {
+        align-items: flex-end;
+    }
+
+    /* Form improvements for mobile */
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        font-size: 16px; /* Prevents zoom on iOS */
+        padding: 14px 12px;
+    }
+
+    /* Bottom safe area for iOS */
+    .modal-content {
+        padding-bottom: env(safe-area-inset-bottom, 20px);
+    }
+
+    /* Card improvements */
+    .card {
+        border-radius: var(--radius-lg);
+        margin-bottom: 12px;
+    }
+
+    .card-header {
+        padding: 14px 16px;
+    }
+
+    .card-header h2 {
+        font-size: 0.95rem;
+    }
+
+    .card-body {
+        padding: 14px 16px;
+    }
+
+    /* Status items mobile */
+    .status-item {
+        padding: 10px 12px;
+    }
+
+    .status-item .status-label {
+        font-size: 0.85rem;
+    }
+
+    .status-item .status-count {
+        font-size: 1rem;
+    }
+
+    /* Food summary mobile */
+    .food-summary {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .food-item {
+        padding: 12px;
+    }
+
+    .food-item .food-icon {
+        font-size: 1.5rem;
+    }
+
+    .food-item .food-count {
+        font-size: 1.2rem;
+    }
+
+    /* Search and filters mobile */
+    .action-bar {
+        padding: 14px;
+        gap: 10px;
+    }
+
+    .search-box input {
+        padding: 12px 12px 12px 40px;
+        font-size: 16px;
+    }
+
+    .search-box::before {
+        left: 12px;
+    }
+
+    /* Better touch targets */
+    .filter-box select {
+        padding: 12px 36px 12px 12px;
+        font-size: 16px;
+        min-width: 100%;
+    }
+
+    /* Floating action button style for Add Guest */
+    #addGuestBtn {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        padding: 0;
+        font-size: 1.5rem;
+        box-shadow: 0 4px 20px rgba(124, 58, 237, 0.4);
+        z-index: 99;
+    }
+
+    #addGuestBtn span {
+        font-size: 1.5rem;
+    }
+
+    /* Hide text in mobile FAB, show only icon */
+    .header-actions .btn-primary span:last-child {
+        display: none;
+    }
+
+    /* User pill mobile */
+    .user-pill {
+        padding: 6px 10px;
+    }
+
+    .user-name {
+        font-size: 0.8rem;
+        max-width: 80px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Empty state mobile */
+    .empty-state {
+        padding: 40px 20px;
+    }
+
+    .empty-icon {
+        font-size: 3rem;
+    }
+
+    .empty-state p {
+        font-size: 0.95rem;
+    }
+
+    /* Toast mobile */
+    .toast {
+        bottom: 80px;
+        left: 16px;
+        right: 16px;
+        transform: translateX(0) translateY(100px);
+        text-align: center;
+    }
+
+    .toast.show {
+        transform: translateX(0) translateY(0);
+    }
+}
+
+/* Extra small screens (small phones) */
+@media (max-width: 380px) {
+    .dashboard {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+
+    .stat-card {
+        padding: 10px;
+        min-height: 80px;
+    }
+
+    .stat-card .stat-value {
+        font-size: 1.1rem;
+    }
+
+    th, td {
+        padding: 8px 6px;
+        font-size: 0.75rem;
+    }
+
+    .action-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 0.8rem;
+    }
+
+    .call-toggle-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 0.8rem;
+    }
+
+    .quick-action-item {
+        padding: 10px;
+    }
+
+    .quick-action-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 0.9rem;
+    }
+}
+
+/* Landscape mode adjustments */
+@media (max-height: 500px) and (orientation: landscape) {
+    .modal-content {
+        max-height: 98vh;
+    }
+
+    .modal {
+        align-items: center;
+    }
+
+    .hero {
+        min-height: auto;
+        padding: 80px 24px 40px;
+    }
+}
+
+/* Safe area support for notched phones */
+@supports (padding: max(0px)) {
+    .main-content {
+        padding-left: max(16px, env(safe-area-inset-left));
+        padding-right: max(16px, env(safe-area-inset-right));
+        padding-bottom: max(16px, env(safe-area-inset-bottom));
+    }
+
+    .toast {
+        bottom: max(80px, calc(env(safe-area-inset-bottom) + 60px));
+    }
+
+    #addGuestBtn {
+        bottom: max(20px, calc(env(safe-area-inset-bottom) + 10px));
+        right: max(20px, env(safe-area-inset-right));
+    }
+}
+
+/* PWA standalone mode (when installed as app) */
+@media (display-mode: standalone) {
+    .landing-nav {
+        padding-top: env(safe-area-inset-top, 0);
+    }
+
+    body {
+        background: var(--bg-color);
+    }
+}
