@@ -655,14 +655,16 @@ function renderHostList() {
 
     hostListDiv.innerHTML = hosts.map(host => {
         const guestCount = guests.filter(g => g.relativeOf === host.name).length;
+        const emailBadge = host.email ? `<span class="host-email-badge" title="${escapeHtml(host.email)}">&#9993; Co-host</span>` : '';
         return `
             <div class="host-item">
                 <div>
-                    <span class="host-item-name">${host.name}</span>
+                    <span class="host-item-name">${escapeHtml(host.name)}</span>
+                    ${emailBadge}
                     <span class="host-item-count">(${guestCount} guests)</span>
                 </div>
                 <div class="host-item-actions">
-                    <button class="btn btn-small btn-danger" onclick="deleteHost('${host.firebaseKey}', '${host.name}')">Delete</button>
+                    <button class="btn btn-small btn-danger" onclick="deleteHost('${host.firebaseKey}', '${escapeHtml(host.name)}')">Delete</button>
                 </div>
             </div>
         `;
@@ -676,7 +678,9 @@ function openHostModal() {
 
 function addHost() {
     const nameInput = document.getElementById('newHostName');
+    const emailInput = document.getElementById('newHostEmail');
     const name = nameInput.value.trim();
+    const email = emailInput ? emailInput.value.trim() : '';
 
     if (!name) {
         showToast('Please enter a host name', 'error');
@@ -691,13 +695,16 @@ function addHost() {
 
     const hostData = {
         name: name,
+        email: email || '',
         createdAt: new Date().toISOString()
     };
 
     hostsRef.push(hostData)
         .then(() => {
             showToast('Host added successfully!', 'success');
+            triggerHaptic();
             nameInput.value = '';
+            if (emailInput) emailInput.value = '';
         })
         .catch((error) => {
             console.error('Firebase host add error:', error);
@@ -708,6 +715,7 @@ function addHost() {
             renderHostList();
             showToast('Host added locally', 'success');
             nameInput.value = '';
+            if (emailInput) emailInput.value = '';
         });
 }
 
@@ -738,7 +746,9 @@ function openAddHostInline() {
 
 function addHostInline() {
     const nameInput = document.getElementById('inlineHostName');
+    const emailInput = document.getElementById('inlineHostEmail');
     const name = nameInput.value.trim();
+    const email = emailInput ? emailInput.value.trim() : '';
 
     if (!name) {
         showToast('Please enter a host name', 'error');
@@ -752,12 +762,14 @@ function addHostInline() {
 
     const hostData = {
         name: name,
+        email: email || '',
         createdAt: new Date().toISOString()
     };
 
     hostsRef.push(hostData)
         .then(() => {
             showToast('Host added successfully!', 'success');
+            triggerHaptic();
             closeModal('addHostInlineModal');
             // Set the newly added host as selected
             setTimeout(() => {
@@ -824,6 +836,8 @@ function openEditModal(id) {
     document.getElementById('whatsapp').value = guest.whatsapp;
     document.getElementById('foodPref').value = guest.foodPref || 'Regular';
     document.getElementById('rsvpStatus').value = guest.rsvpStatus;
+    const callDoneEl = document.getElementById('callDone');
+    if (callDoneEl) callDoneEl.checked = guest.callDone || false;
     document.getElementById('giftGiven').checked = guest.giftGiven;
     document.getElementById('giftDescription').value = guest.giftDescription || '';
     document.getElementById('notes').value = guest.notes || '';
@@ -863,6 +877,7 @@ function saveGuest(event) {
     const id = document.getElementById('guestId').value;
     const existingGuest = id ? guests.find(g => g.id === id) : null;
 
+    const callDoneEl = document.getElementById('callDone');
     const guestData = {
         id: id || generateId(),
         firstName: document.getElementById('firstName').value.trim(),
@@ -872,6 +887,7 @@ function saveGuest(event) {
         whatsapp: document.getElementById('whatsapp').value.trim(),
         foodPref: document.getElementById('foodPref').value || 'Regular',
         rsvpStatus: document.getElementById('rsvpStatus').value,
+        callDone: callDoneEl ? callDoneEl.checked : (existingGuest?.callDone || false),
         giftGiven: document.getElementById('giftGiven').checked,
         giftDescription: document.getElementById('giftDescription').value.trim(),
         notes: document.getElementById('notes').value.trim(),
@@ -994,8 +1010,8 @@ function renderGuestTable() {
     tbody.innerHTML = filteredGuests.map((guest, index) => `
         <tr>
             <td>${index + 1}</td>
-            <td><strong>${guest.firstName} ${guest.surname}</strong></td>
-            <td><span class="relative-badge">${guest.relativeOf || '-'}</span></td>
+            <td><strong>${escapeHtml(guest.firstName)} ${escapeHtml(guest.surname)}</strong></td>
+            <td><span class="relative-badge">${escapeHtml(guest.relativeOf) || '-'}</span></td>
             <td>${guest.members}</td>
             <td>
                 <a href="javascript:void(0)" class="whatsapp-btn" onclick="sendWhatsappInvite('${guest.whatsapp}','${(guest.firstName||'').replace(/'/g,"\\'")} ${ (guest.surname||'').replace(/'/g,"\\'") }'.trim())">&#128172; WhatsApp</a>
@@ -1003,16 +1019,21 @@ function renderGuestTable() {
             <td><span class="badge badge-${(guest.foodPref || 'Regular').toLowerCase()}">${guest.foodPref || 'Regular'}</span></td>
             <td><span class="badge badge-${guest.rsvpStatus.toLowerCase()}">${guest.rsvpStatus}</span></td>
             <td>
+                <button class="call-toggle-btn ${guest.callDone ? 'done' : ''}" onclick="toggleCallDone('${guest.id}')" title="${guest.callDone ? 'Called' : 'Mark as called'}">
+                    ${guest.callDone ? '&#9989;' : '&#128222;'}
+                </button>
+            </td>
+            <td>
                 ${guest.giftGiven ? `
                     <div class="gift-info">
                         <span>Yes</span>
-                        ${guest.giftDescription ? `<span class="gift-desc">${guest.giftDescription}</span>` : ''}
+                        ${guest.giftDescription ? `<span class="gift-desc">${escapeHtml(guest.giftDescription)}</span>` : ''}
                     </div>
                 ` : 'No'}
             </td>
             <td>
                 <div class="action-cell">
-                    <button class="action-btn call" onclick="openWhatsApp('${guest.whatsapp}')" title="WhatsApp">&#128222;</button>
+                    <button class="action-btn call" onclick="openWhatsApp('${guest.whatsapp}')" title="WhatsApp">&#128172;</button>
                     <button class="action-btn edit" onclick="openEditModal('${guest.id}')" title="Edit">&#9998;</button>
                     <button class="action-btn delete" onclick="deleteGuest('${guest.id}')" title="Delete">&#128465;</button>
                 </div>
@@ -1063,7 +1084,9 @@ function updateDashboard() {
         declined: guests.filter(g => g.rsvpStatus === 'Declined').length,
         regular: guests.filter(g => (g.foodPref || 'Regular') === 'Regular').reduce((sum, g) => sum + g.members, 0),
         swaminarayan: guests.filter(g => g.foodPref === 'Swaminarayan').reduce((sum, g) => sum + g.members, 0),
-        gifts: guests.filter(g => g.giftGiven).length
+        gifts: guests.filter(g => g.giftGiven).length,
+        callsDone: guests.filter(g => g.callDone).length,
+        callsPending: guests.filter(g => !g.callDone).length
     };
 
     document.getElementById('totalFamilies').textContent = stats.totalFamilies;
@@ -1079,6 +1102,12 @@ function updateDashboard() {
     document.getElementById('statusDeclined').textContent = stats.declined;
 
     document.getElementById('giftsCount').textContent = stats.gifts;
+
+    // Call tracker stats
+    const callsCountEl = document.getElementById('callsCount');
+    const callsPendingEl = document.getElementById('callsPendingCount');
+    if (callsCountEl) callsCountEl.textContent = stats.callsDone;
+    if (callsPendingEl) callsPendingEl.textContent = stats.callsPending;
 
     // Persist quick stats for Event Dashboard
     updateEventMetaStats();
@@ -1509,18 +1538,21 @@ function renderTemplateList() {
         return;
     }
 
-    container.innerHTML = whatsappTemplates.map(template => `
-        <div class="template-item">
-            <div class="template-item-content">
-                <div class="template-item-name">${escapeHtml(template.name)}</div>
-                <div class="template-item-preview">${escapeHtml(template.message)}</div>
+    container.innerHTML = whatsappTemplates.map(template => {
+        const hasImage = template.imageUrl ? `<span class="template-has-image" title="Has image attached">&#128247;</span>` : '';
+        return `
+            <div class="template-item">
+                <div class="template-item-content">
+                    <div class="template-item-name">${escapeHtml(template.name)} ${hasImage}</div>
+                    <div class="template-item-preview">${escapeHtml(template.message)}</div>
+                </div>
+                <div class="template-item-actions">
+                    <button class="btn btn-small btn-outline" onclick="useTemplate('${template.id}')" title="Use this template">Use</button>
+                    <button class="btn btn-small btn-danger" onclick="deleteTemplate('${template.id}')" title="Delete">&#128465;</button>
+                </div>
             </div>
-            <div class="template-item-actions">
-                <button class="btn btn-small btn-outline" onclick="useTemplate('${template.id}')" title="Use this template">Use</button>
-                <button class="btn btn-small btn-danger" onclick="deleteTemplate('${template.id}')" title="Delete">&#128465;</button>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 function renderTemplateSelect() {
@@ -1583,6 +1615,8 @@ function openWhatsappTemplateModal() {
 function addWhatsappTemplate() {
     const name = document.getElementById('newTemplateName').value.trim();
     const message = document.getElementById('newTemplateMessage').value.trim();
+    const imageInput = document.getElementById('newTemplateImage');
+    const imageUrl = imageInput ? imageInput.value.trim() : '';
 
     if (!name || !message) {
         showToast('Please enter template name and message', 'error');
@@ -1597,11 +1631,14 @@ function addWhatsappTemplate() {
     templatesRef.push({
         name,
         message,
+        imageUrl: imageUrl || '',
         createdAt: new Date().toISOString()
     }).then(() => {
         showToast('Template added!', 'success');
+        triggerHaptic();
         document.getElementById('newTemplateName').value = '';
         document.getElementById('newTemplateMessage').value = '';
+        if (imageInput) imageInput.value = '';
     }).catch((error) => {
         showToast('Failed to add template', 'error');
     });
@@ -1878,6 +1915,7 @@ async function pickContact() {
             }
 
             document.getElementById('whatsapp').value = phone;
+            triggerHaptic();
             showToast('Contact selected!', 'success');
         }
     } catch (e) {
@@ -1887,3 +1925,80 @@ async function pickContact() {
         }
     }
 }
+
+// ==================== TOGGLE CALL DONE ====================
+
+function toggleCallDone(guestId) {
+    const guest = guests.find(g => g.id === guestId);
+    if (!guest) return;
+
+    guest.callDone = !guest.callDone;
+    guest.updatedAt = new Date().toISOString();
+
+    triggerHaptic();
+
+    if (guest.firebaseKey) {
+        guestsRef.child(guest.firebaseKey).update({
+            callDone: guest.callDone,
+            updatedAt: guest.updatedAt
+        }).then(() => {
+            showToast(guest.callDone ? 'Marked as called!' : 'Call status cleared', 'success');
+        }).catch((error) => {
+            console.error('Failed to update call status:', error);
+            saveGuests();
+            renderGuestTable();
+            updateDashboard();
+        });
+    } else {
+        saveGuests();
+        renderGuestTable();
+        updateDashboard();
+        showToast(guest.callDone ? 'Marked as called!' : 'Call status cleared', 'success');
+    }
+}
+
+// ==================== HAPTIC FEEDBACK ====================
+
+function triggerHaptic(type = 'light') {
+    // Check for Vibration API (mobile browsers)
+    if ('vibrate' in navigator) {
+        switch (type) {
+            case 'heavy':
+                navigator.vibrate([30, 20, 30]);
+                break;
+            case 'medium':
+                navigator.vibrate(20);
+                break;
+            case 'light':
+            default:
+                navigator.vibrate(10);
+                break;
+        }
+    }
+
+    // For iOS Safari - Haptic Feedback via AudioContext (workaround)
+    if (window.webkit && window.webkit.messageHandlers) {
+        try {
+            // This is a placeholder for potential WKWebView haptic feedback
+        } catch (e) {}
+    }
+}
+
+// ==================== MOBILE ENHANCEMENTS ====================
+
+// Add touch feedback to buttons on mobile
+document.addEventListener('DOMContentLoaded', function() {
+    // Enable active states on touch devices
+    document.addEventListener('touchstart', function() {}, { passive: true });
+
+    // Add ripple effect class on button clicks
+    document.body.addEventListener('click', function(e) {
+        const btn = e.target.closest('.btn, .action-btn, .quick-action-item, .nav-item');
+        if (btn) {
+            triggerHaptic('light');
+        }
+    });
+
+    // Pull to refresh prevention on mobile (except for scrollable areas)
+    document.body.style.overscrollBehavior = 'none';
+});
