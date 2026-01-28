@@ -519,6 +519,7 @@ async function selectEvent(eventId, meta) {
         hosts = [];
         renderGuestTable();
         renderHostDropdowns();
+        renderHostList();
         updateDashboard();
     }
 
