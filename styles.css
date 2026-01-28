@@ -3127,3 +3127,546 @@ form {
         background: var(--bg-color);
     }
 }
+
+/* =========================
+   BOTTOM NAVIGATION BAR
+   ========================= */
+
+.bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    border-top: 1px solid var(--border-color);
+    padding: 8px 0;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    z-index: 999;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.bottom-nav {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+}
+
+.bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 12px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 60px;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.bottom-nav-item:active {
+    transform: scale(0.92);
+}
+
+.bottom-nav-icon {
+    font-size: 1.4rem;
+    line-height: 1;
+    margin-bottom: 2px;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+}
+
+.bottom-nav-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+}
+
+.bottom-nav-item.active .bottom-nav-icon,
+.bottom-nav-item.active .bottom-nav-label {
+    color: var(--primary-purple);
+}
+
+.bottom-nav-item:hover:not(.active) .bottom-nav-icon,
+.bottom-nav-item:hover:not(.active) .bottom-nav-label {
+    color: var(--text-primary);
+}
+
+/* FAB-style Add button in center */
+.bottom-nav-add {
+    width: 52px;
+    height: 52px;
+    min-width: 52px;
+    background: var(--gradient-purple);
+    border-radius: 50%;
+    margin-top: -20px;
+    padding: 0;
+    box-shadow: 0 4px 15px rgba(124, 58, 237, 0.4);
+}
+
+.bottom-nav-add .bottom-nav-icon {
+    color: white;
+    font-size: 1.6rem;
+    margin: 0;
+}
+
+.bottom-nav-add:active {
+    transform: scale(0.9);
+}
+
+/* Desktop - hide bottom nav */
+@media (min-width: 769px) {
+    .bottom-nav {
+        display: none !important;
+    }
+}
+
+/* Mobile - show bottom nav and adjust main content */
+@media (max-width: 768px) {
+    .bottom-nav {
+        display: flex;
+    }
+
+    .main-content {
+        padding-bottom: 90px;
+    }
+
+    /* Hide sidebar on mobile */
+    .sidebar {
+        display: none;
+    }
+
+    /* Hide floating add button when bottom nav is present */
+    #addGuestBtn {
+        display: none !important;
+    }
+
+    /* Adjust toast position above bottom nav */
+    .toast {
+        bottom: max(100px, calc(env(safe-area-inset-bottom) + 80px));
+    }
+}
+
+/* =========================
+   BOTTOM SHEET MODALS
+   ========================= */
+
+.bottom-sheet {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+}
+
+.bottom-sheet.show {
+    display: block;
+}
+
+.bottom-sheet-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.bottom-sheet-content {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+    max-height: 85vh;
+    overflow-y: auto;
+    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+.bottom-sheet-handle {
+    width: 36px;
+    height: 4px;
+    background: var(--border-color);
+    border-radius: 2px;
+    margin: 12px auto;
+}
+
+.bottom-sheet-header {
+    padding: 0 20px 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.bottom-sheet-header h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-align: center;
+}
+
+.bottom-sheet-body {
+    padding: 8px 0;
+}
+
+/* Settings Menu Items */
+.settings-menu {
+    padding: 0;
+}
+
+.settings-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 20px;
+    cursor: pointer;
+    transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.settings-item:active {
+    background: var(--bg-color);
+}
+
+.settings-icon {
+    font-size: 1.3rem;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-color);
+    border-radius: var(--radius-md);
+}
+
+.settings-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.settings-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+
+.settings-desc {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.settings-arrow {
+    color: var(--text-muted);
+    font-size: 1.2rem;
+}
+
+.settings-divider {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 8px 20px;
+}
+
+.settings-item.danger .settings-label {
+    color: var(--danger-color);
+}
+
+.settings-item.danger .settings-icon {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger-color);
+}
+
+/* =========================
+   OFFLINE INDICATOR
+   ========================= */
+
+.offline-indicator {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: white;
+    padding: 8px 16px;
+    padding-top: max(8px, env(safe-area-inset-top));
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-align: center;
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+.offline-indicator.show {
+    display: flex;
+}
+
+.offline-icon {
+    font-size: 1rem;
+}
+
+body.offline .offline-indicator {
+    display: flex;
+}
+
+body.offline .main-content {
+    padding-top: calc(24px + env(safe-area-inset-top) + 40px);
+}
+
+/* Online sync indicator */
+.sync-indicator {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    z-index: 100;
+    display: none;
+}
+
+.sync-indicator.syncing {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(124, 58, 237, 0.1);
+    color: var(--primary-purple);
+}
+
+.sync-indicator.synced {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+}
+
+/* =========================
+   SWIPE GESTURE STYLES
+   ========================= */
+
+.swipe-row {
+    position: relative;
+    overflow: hidden;
+}
+
+.swipe-actions {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    transition: opacity 0.2s;
+}
+
+.swipe-actions-left {
+    left: 0;
+    padding-left: 16px;
+    background: linear-gradient(90deg, #10b981, transparent);
+}
+
+.swipe-actions-right {
+    right: 0;
+    padding-right: 16px;
+    background: linear-gradient(270deg, #ef4444, transparent);
+}
+
+.swipe-action-btn {
+    padding: 8px 16px;
+    border-radius: var(--radius-md);
+    color: white;
+    font-weight: 600;
+    font-size: 0.8rem;
+    border: none;
+    cursor: pointer;
+}
+
+.swipe-action-btn.confirm {
+    background: #10b981;
+}
+
+.swipe-action-btn.decline {
+    background: #ef4444;
+}
+
+/* Guest row with swipe indicator */
+.guest-row-swipeable {
+    position: relative;
+    background: white;
+    transition: transform 0.2s ease;
+}
+
+.guest-row-swipeable.swiping {
+    transition: none;
+}
+
+.swipe-hint {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+.swipe-hint-left {
+    left: 10px;
+    background: #10b981;
+    color: white;
+}
+
+.swipe-hint-right {
+    right: 10px;
+    background: #ef4444;
+    color: white;
+}
+
+.guest-row-swipeable.swipe-left .swipe-hint-right,
+.guest-row-swipeable.swipe-right .swipe-hint-left {
+    opacity: 1;
+}
+
+/* =========================
+   MOBILE MODAL BOTTOM SHEET
+   ========================= */
+
+@media (max-width: 768px) {
+    /* Convert modals to bottom sheets on mobile */
+    .modal {
+        align-items: flex-end;
+    }
+
+    .modal-content {
+        border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+        margin: 0;
+        max-height: 92vh;
+        animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .modal-content::before {
+        content: '';
+        display: block;
+        width: 36px;
+        height: 4px;
+        background: var(--border-color);
+        border-radius: 2px;
+        margin: 12px auto;
+    }
+
+    .modal-header {
+        border-radius: 0;
+    }
+
+    /* Adjust form padding on mobile */
+    form {
+        padding: 20px;
+    }
+
+    .form-actions {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+}
+
+/* =========================
+   INSTALL PROMPT
+   ========================= */
+
+.install-prompt {
+    display: none;
+    position: fixed;
+    bottom: 100px;
+    left: 16px;
+    right: 16px;
+    background: white;
+    border-radius: var(--radius-xl);
+    padding: 16px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    animation: slideUp 0.3s ease;
+}
+
+.install-prompt.show {
+    display: block;
+}
+
+.install-prompt-content {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.install-prompt-icon {
+    font-size: 2.5rem;
+}
+
+.install-prompt-text {
+    flex: 1;
+}
+
+.install-prompt-text h4 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.install-prompt-text p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.install-prompt-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.install-prompt-actions .btn {
+    flex: 1;
+    padding: 10px 16px;
+}
+
+/* Hide install prompt on desktop */
+@media (min-width: 769px) {
+    .install-prompt {
+        display: none !important;
+    }
+}
+
+/* Hide bottom nav safe area for bottom sheets */
+@media (max-width: 768px) {
+    .bottom-nav {
+        padding-bottom: max(8px, env(safe-area-inset-bottom));
+    }
+}
