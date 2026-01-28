@@ -2001,4 +2001,362 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Pull to refresh prevention on mobile (except for scrollable areas)
     document.body.style.overscrollBehavior = 'none';
+
+    // Register Service Worker
+    registerServiceWorker();
+
+    // Setup offline indicator
+    setupOfflineIndicator();
+
+    // Setup swipe gestures for mobile
+    setupSwipeGestures();
+
+    // Check for install prompt
+    setupInstallPrompt();
 });
+
+// ==================== SERVICE WORKER ====================
+
+let swRegistration = null;
+
+async function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        try {
+            swRegistration = await navigator.serviceWorker.register('./sw.js');
+            console.log('[App] Service Worker registered:', swRegistration.scope);
+
+            // Listen for updates
+            swRegistration.addEventListener('updatefound', () => {
+                const newWorker = swRegistration.installing;
+                newWorker.addEventListener('statechange', () => {
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        // New version available
+                        showUpdateAvailable();
+                    }
+                });
+            });
+
+            // Listen for messages from SW
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                if (event.data.type === 'SYNC_REQUESTED') {
+                    // Re-sync data when back online
+                    if (currentEventId) {
+                        selectEvent(currentEventId);
+                    }
+                }
+                if (event.data.type === 'UPDATE_AVAILABLE') {
+                    showUpdateAvailable();
+                }
+            });
+        } catch (error) {
+            console.log('[App] Service Worker registration failed:', error);
+        }
+    }
+}
+
+function showUpdateAvailable() {
+    const shouldUpdate = confirm('A new version of InviteePro is available. Update now?');
+    if (shouldUpdate && swRegistration && swRegistration.waiting) {
+        swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        window.location.reload();
+    }
+}
+
+// ==================== OFFLINE INDICATOR ====================
+
+function setupOfflineIndicator() {
+    updateOnlineStatus();
+
+    window.addEventListener('online', () => {
+        isOnline = true;
+        updateOnlineStatus();
+        showToast('You\'re back online!', 'success');
+    });
+
+    window.addEventListener('offline', () => {
+        isOnline = false;
+        updateOnlineStatus();
+    });
+}
+
+function updateOnlineStatus() {
+    const indicator = document.getElementById('offlineIndicator');
+    if (indicator) {
+        if (navigator.onLine) {
+            indicator.classList.remove('show');
+            document.body.classList.remove('offline');
+        } else {
+            indicator.classList.add('show');
+            document.body.classList.add('offline');
+        }
+    }
+}
+
+// ==================== BOTTOM SHEET ====================
+
+function openBottomSheet(sheetId) {
+    const sheet = document.getElementById(sheetId);
+    if (sheet) {
+        sheet.classList.add('show');
+        document.body.style.overflow = 'hidden';
+        triggerHaptic('light');
+    }
+}
+
+function closeBottomSheet(sheetId) {
+    const sheet = document.getElementById(sheetId);
+    if (sheet) {
+        sheet.classList.remove('show');
+        document.body.style.overflow = '';
+    }
+}
+
+function openSettingsSheet() {
+    openBottomSheet('settingsSheet');
+}
+
+// ==================== TAB NAVIGATION ====================
+
+function switchTab(tabName) {
+    // Update bottom nav active state
+    document.querySelectorAll('.bottom-nav-item').forEach(item => {
+        item.classList.remove('active');
+        if (item.dataset.tab === tabName) {
+            item.classList.add('active');
+        }
+    });
+
+    // Handle tab switching
+    switch (tabName) {
+        case 'home':
+            // Scroll to top / dashboard
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            triggerHaptic('light');
+            break;
+        case 'guests':
+            // Scroll to guest table
+            const guestTable = document.getElementById('guestTable');
+            if (guestTable) {
+                guestTable.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            triggerHaptic('light');
+            break;
+        case 'whatsapp':
+            openWhatsappTemplateModal();
+            break;
+        case 'settings':
+            openSettingsSheet();
+            break;
+    }
+}
+
+// ==================== SWIPE GESTURES ====================
+
+let touchStartX = 0;
+let touchStartY = 0;
+let currentSwipeRow = null;
+const SWIPE_THRESHOLD = 80;
+
+function setupSwipeGestures() {
+    // Only enable on mobile
+    if (window.innerWidth > 768) return;
+
+    const tableBody = document.getElementById('guestTableBody');
+    if (!tableBody) return;
+
+    tableBody.addEventListener('touchstart', handleTouchStart, { passive: true });
+    tableBody.addEventListener('touchmove', handleTouchMove, { passive: false });
+    tableBody.addEventListener('touchend', handleTouchEnd, { passive: true });
+}
+
+function handleTouchStart(e) {
+    const row = e.target.closest('tr');
+    if (!row) return;
+
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    currentSwipeRow = row;
+    row.classList.add('swiping');
+}
+
+function handleTouchMove(e) {
+    if (!currentSwipeRow) return;
+
+    const touchX = e.touches[0].clientX;
+    const touchY = e.touches[0].clientY;
+    const diffX = touchX - touchStartX;
+    const diffY = touchY - touchStartY;
+
+    // Only handle horizontal swipes
+    if (Math.abs(diffX) < Math.abs(diffY)) {
+        return;
+    }
+
+    // Prevent scroll during swipe
+    e.preventDefault();
+
+    // Limit the swipe distance
+    const maxSwipe = 100;
+    const clampedDiff = Math.max(-maxSwipe, Math.min(maxSwipe, diffX));
+
+    currentSwipeRow.style.transform = `translateX(${clampedDiff}px)`;
+
+    // Show swipe hints
+    currentSwipeRow.classList.remove('swipe-left', 'swipe-right');
+    if (diffX > SWIPE_THRESHOLD) {
+        currentSwipeRow.classList.add('swipe-right');
+    } else if (diffX < -SWIPE_THRESHOLD) {
+        currentSwipeRow.classList.add('swipe-left');
+    }
+}
+
+function handleTouchEnd(e) {
+    if (!currentSwipeRow) return;
+
+    const finalX = e.changedTouches[0].clientX;
+    const diffX = finalX - touchStartX;
+
+    // Reset transform
+    currentSwipeRow.style.transform = '';
+    currentSwipeRow.classList.remove('swiping', 'swipe-left', 'swipe-right');
+
+    // Get guest ID from row
+    const editBtn = currentSwipeRow.querySelector('.action-btn.edit');
+    if (!editBtn) {
+        currentSwipeRow = null;
+        return;
+    }
+
+    const onclickAttr = editBtn.getAttribute('onclick');
+    const match = onclickAttr.match(/openEditModal\('([^']+)'\)/);
+    if (!match) {
+        currentSwipeRow = null;
+        return;
+    }
+
+    const guestId = match[1];
+    const guest = guests.find(g => g.id === guestId);
+
+    if (guest) {
+        // Swipe right = Confirm
+        if (diffX > SWIPE_THRESHOLD) {
+            if (guest.rsvpStatus !== 'Confirmed') {
+                updateGuestRsvpStatus(guestId, 'Confirmed');
+                triggerHaptic('medium');
+                showToast('Marked as Confirmed!', 'success');
+            }
+        }
+        // Swipe left = Decline
+        else if (diffX < -SWIPE_THRESHOLD) {
+            if (guest.rsvpStatus !== 'Declined') {
+                updateGuestRsvpStatus(guestId, 'Declined');
+                triggerHaptic('medium');
+                showToast('Marked as Declined', 'success');
+            }
+        }
+    }
+
+    currentSwipeRow = null;
+}
+
+function updateGuestRsvpStatus(guestId, newStatus) {
+    const guest = guests.find(g => g.id === guestId);
+    if (!guest) return;
+
+    const oldStatus = guest.rsvpStatus;
+    guest.rsvpStatus = newStatus;
+    guest.updatedAt = new Date().toISOString();
+
+    // Add to status history
+    if (!Array.isArray(guest.statusHistory)) {
+        guest.statusHistory = [];
+    }
+    guest.statusHistory.push({
+        from: oldStatus,
+        to: newStatus,
+        at: new Date().toISOString()
+    });
+
+    if (guest.firebaseKey) {
+        guestsRef.child(guest.firebaseKey).update({
+            rsvpStatus: newStatus,
+            statusHistory: guest.statusHistory,
+            updatedAt: guest.updatedAt
+        }).catch((error) => {
+            console.error('Failed to update RSVP:', error);
+            saveGuests();
+            renderGuestTable();
+            updateDashboard();
+        });
+    } else {
+        saveGuests();
+        renderGuestTable();
+        updateDashboard();
+    }
+}
+
+// ==================== INSTALL PROMPT ====================
+
+let deferredPrompt = null;
+
+function setupInstallPrompt() {
+    window.addEventListener('beforeinstallprompt', (e) => {
+        // Prevent the mini-infobar from appearing on mobile
+        e.preventDefault();
+        // Stash the event so it can be triggered later
+        deferredPrompt = e;
+
+        // Show install prompt after a delay
+        setTimeout(() => {
+            showInstallPrompt();
+        }, 30000); // Show after 30 seconds
+    });
+
+    window.addEventListener('appinstalled', () => {
+        deferredPrompt = null;
+        hideInstallPrompt();
+        showToast('InviteePro installed successfully!', 'success');
+    });
+}
+
+function showInstallPrompt() {
+    // Only show if we have a deferred prompt and on mobile
+    if (!deferredPrompt || window.innerWidth > 768) return;
+
+    const prompt = document.getElementById('installPrompt');
+    if (prompt) {
+        prompt.classList.add('show');
+    }
+}
+
+function hideInstallPrompt() {
+    const prompt = document.getElementById('installPrompt');
+    if (prompt) {
+        prompt.classList.remove('show');
+    }
+}
+
+async function installApp() {
+    if (!deferredPrompt) return;
+
+    // Show the install prompt
+    deferredPrompt.prompt();
+
+    // Wait for the user to respond to the prompt
+    const { outcome } = await deferredPrompt.userChoice;
+
+    if (outcome === 'accepted') {
+        console.log('[App] User accepted the install prompt');
+    } else {
+        console.log('[App] User dismissed the install prompt');
+    }
+
+    deferredPrompt = null;
+    hideInstallPrompt();
+}
+
+function dismissInstallPrompt() {
+    hideInstallPrompt();
+    // Don't show again for this session
+    deferredPrompt = null;
+}

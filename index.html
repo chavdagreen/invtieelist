@@ -8,7 +8,9 @@
     <meta name="apple-mobile-web-app-title" content="InviteePro">
     <meta name="theme-color" content="#7c3aed">
     <meta name="description" content="Manage your invitee lists for multiple events">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%237c3aed' width='100' height='100' rx='20'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>&#127968;</text></svg>">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-96.png">
     <title>InviteePro - Event Guest Management</title>
     <link rel="stylesheet" href="styles.css">
     <!-- SheetJS for Excel export -->
@@ -631,6 +633,50 @@
                 </section>
             </div>
         </main>
+
+        <!-- Bottom Navigation Bar (Mobile) -->
+        <nav class="bottom-nav" id="bottomNav">
+            <div class="bottom-nav-item active" data-tab="home" onclick="switchTab('home')">
+                <span class="bottom-nav-icon">&#127968;</span>
+                <span class="bottom-nav-label">Home</span>
+            </div>
+            <div class="bottom-nav-item" data-tab="guests" onclick="switchTab('guests')">
+                <span class="bottom-nav-icon">&#128101;</span>
+                <span class="bottom-nav-label">Guests</span>
+            </div>
+            <div class="bottom-nav-item bottom-nav-add" onclick="openAddModal()">
+                <span class="bottom-nav-icon">&#10133;</span>
+            </div>
+            <div class="bottom-nav-item" data-tab="whatsapp" onclick="openWhatsappTemplateModal()">
+                <span class="bottom-nav-icon">&#128172;</span>
+                <span class="bottom-nav-label">WhatsApp</span>
+            </div>
+            <div class="bottom-nav-item" data-tab="settings" onclick="openSettingsSheet()">
+                <span class="bottom-nav-icon">&#9881;</span>
+                <span class="bottom-nav-label">More</span>
+            </div>
+        </nav>
+
+        <!-- Offline Indicator -->
+        <div class="offline-indicator" id="offlineIndicator">
+            <span class="offline-icon">&#9888;</span>
+            <span>You're offline</span>
+        </div>
+
+        <!-- Install Prompt -->
+        <div class="install-prompt" id="installPrompt">
+            <div class="install-prompt-content">
+                <span class="install-prompt-icon">&#127881;</span>
+                <div class="install-prompt-text">
+                    <h4>Install InviteePro</h4>
+                    <p>Add to your home screen for the best experience</p>
+                </div>
+            </div>
+            <div class="install-prompt-actions">
+                <button class="btn btn-outline" onclick="dismissInstallPrompt()">Not Now</button>
+                <button class="btn btn-primary" onclick="installApp()">Install</button>
+            </div>
+        </div>
     </div>
 
     <!-- Add/Edit Guest Modal -->
@@ -1018,6 +1064,70 @@
                         <button class="btn btn-whatsapp" onclick="openBulkWhatsApp()">
                             &#128172; Open WhatsApp for Each Guest
                         </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Bottom Sheet -->
+    <div class="bottom-sheet" id="settingsSheet">
+        <div class="bottom-sheet-overlay" onclick="closeBottomSheet('settingsSheet')"></div>
+        <div class="bottom-sheet-content">
+            <div class="bottom-sheet-handle"></div>
+            <div class="bottom-sheet-header">
+                <h3>Settings & More</h3>
+            </div>
+            <div class="bottom-sheet-body">
+                <div class="settings-menu">
+                    <div class="settings-item" onclick="openHostModal(); closeBottomSheet('settingsSheet');">
+                        <span class="settings-icon">&#128100;</span>
+                        <div class="settings-text">
+                            <span class="settings-label">Manage Hosts</span>
+                            <span class="settings-desc">Add or edit host names</span>
+                        </div>
+                        <span class="settings-arrow">&#8250;</span>
+                    </div>
+                    <div class="settings-item" onclick="openImportGuestsModal(); closeBottomSheet('settingsSheet');">
+                        <span class="settings-icon">&#128229;</span>
+                        <div class="settings-text">
+                            <span class="settings-label">Import Guests</span>
+                            <span class="settings-desc">From your other events</span>
+                        </div>
+                        <span class="settings-arrow">&#8250;</span>
+                    </div>
+                    <div class="settings-item" onclick="openExportModal(); closeBottomSheet('settingsSheet');">
+                        <span class="settings-icon">&#128196;</span>
+                        <div class="settings-text">
+                            <span class="settings-label">Export List</span>
+                            <span class="settings-desc">Download Excel or PDF</span>
+                        </div>
+                        <span class="settings-arrow">&#8250;</span>
+                    </div>
+                    <div class="settings-item" onclick="openBackupModal(); closeBottomSheet('settingsSheet');">
+                        <span class="settings-icon">&#128190;</span>
+                        <div class="settings-text">
+                            <span class="settings-label">Backup & Restore</span>
+                            <span class="settings-desc">Save or restore your data</span>
+                        </div>
+                        <span class="settings-arrow">&#8250;</span>
+                    </div>
+                    <div class="settings-item" onclick="copyAllWhatsappNumbers(); closeBottomSheet('settingsSheet');">
+                        <span class="settings-icon">&#128222;</span>
+                        <div class="settings-text">
+                            <span class="settings-label">Copy All Numbers</span>
+                            <span class="settings-desc">For WhatsApp broadcast</span>
+                        </div>
+                        <span class="settings-arrow">&#8250;</span>
+                    </div>
+                    <hr class="settings-divider">
+                    <div class="settings-item danger" onclick="signOutUser(); closeBottomSheet('settingsSheet');">
+                        <span class="settings-icon">&#9211;</span>
+                        <div class="settings-text">
+                            <span class="settings-label">Sign Out</span>
+                            <span class="settings-desc">Log out of your account</span>
+                        </div>
+                        <span class="settings-arrow">&#8250;</span>
                     </div>
                 </div>
             </div>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate PWA Icons</title>
+    <style>
+        body { font-family: system-ui; padding: 40px; text-align: center; }
+        button { padding: 15px 30px; font-size: 16px; margin: 10px; cursor: pointer; background: #7c3aed; color: white; border: none; border-radius: 8px; }
+        button:hover { background: #6d28d9; }
+        .icons { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin-top: 30px; }
+        .icon-item { text-align: center; }
+        canvas { border: 1px solid #ddd; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <h1>InviteePro PWA Icon Generator</h1>
+    <p>Click the button below to generate and download all required PWA icons.</p>
+    <button onclick="generateAllIcons()">Generate & Download All Icons</button>
+    <div class="icons" id="icons"></div>
+
+    <script>
+        const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+
+        function drawIcon(ctx, size) {
+            // Background gradient
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#7c3aed');
+            gradient.addColorStop(1, '#6d28d9');
+
+            // Rounded rect background
+            const radius = size * 0.2;
+            ctx.beginPath();
+            ctx.roundRect(0, 0, size, size, radius);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Scale factor
+            const s = size / 512;
+
+            ctx.save();
+            ctx.translate(size/2, size/2);
+
+            // Party sparkles
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.beginPath();
+            ctx.moveTo(-80*s, -120*s);
+            ctx.lineTo(-40*s, -80*s);
+            ctx.lineTo(-60*s, -60*s);
+            ctx.lineTo(-100*s, -100*s);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(-100*s, -140*s, 15*s, 0, Math.PI*2);
+            ctx.fillStyle = 'rgba(255,255,255,0.8)';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(-140*s, -100*s, 12*s, 0, Math.PI*2);
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(-60*s, -150*s, 10*s, 0, Math.PI*2);
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.fill();
+
+            // Main card
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.roundRect(-90*s, -60*s, 180*s, 200*s, 20*s);
+            ctx.fill();
+
+            // List items
+            ctx.fillStyle = 'rgba(124, 58, 237, 0.3)';
+            ctx.beginPath();
+            ctx.roundRect(-70*s, -30*s, 100*s, 12*s, 6*s);
+            ctx.fill();
+
+            ctx.fillStyle = 'rgba(124, 58, 237, 0.2)';
+            ctx.beginPath();
+            ctx.roundRect(-70*s, 0*s, 140*s, 8*s, 4*s);
+            ctx.fill();
+
+            ctx.fillStyle = 'rgba(124, 58, 237, 0.3)';
+            ctx.beginPath();
+            ctx.roundRect(-70*s, 30*s, 100*s, 12*s, 6*s);
+            ctx.fill();
+
+            ctx.fillStyle = 'rgba(124, 58, 237, 0.2)';
+            ctx.beginPath();
+            ctx.roundRect(-70*s, 60*s, 140*s, 8*s, 4*s);
+            ctx.fill();
+
+            ctx.fillStyle = 'rgba(124, 58, 237, 0.3)';
+            ctx.beginPath();
+            ctx.roundRect(-70*s, 90*s, 100*s, 12*s, 6*s);
+            ctx.fill();
+
+            // Checkmarks
+            ctx.fillStyle = '#10b981';
+            ctx.beginPath();
+            ctx.arc(60*s, -24*s, 18*s, 0, Math.PI*2);
+            ctx.fill();
+
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 4*s;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(50*s, -24*s);
+            ctx.lineTo(57*s, -17*s);
+            ctx.lineTo(72*s, -32*s);
+            ctx.stroke();
+
+            ctx.fillStyle = '#10b981';
+            ctx.beginPath();
+            ctx.arc(60*s, 36*s, 18*s, 0, Math.PI*2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(50*s, 36*s);
+            ctx.lineTo(57*s, 43*s);
+            ctx.lineTo(72*s, 28*s);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function generateIcon(size) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            drawIcon(ctx, size);
+            return canvas;
+        }
+
+        function downloadIcon(canvas, size) {
+            const link = document.createElement('a');
+            link.download = `icon-${size}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        function generateAllIcons() {
+            const container = document.getElementById('icons');
+            container.innerHTML = '';
+
+            sizes.forEach((size, index) => {
+                setTimeout(() => {
+                    const canvas = generateIcon(size);
+                    const div = document.createElement('div');
+                    div.className = 'icon-item';
+                    div.innerHTML = `<p>${size}x${size}</p>`;
+                    div.appendChild(canvas);
+                    container.appendChild(div);
+                    downloadIcon(canvas, size);
+                }, index * 300);
+            });
+        }
+
+        // Show preview on load
+        window.onload = () => {
+            const container = document.getElementById('icons');
+            sizes.forEach(size => {
+                const canvas = generateIcon(size);
+                const div = document.createElement('div');
+                div.className = 'icon-item';
+                div.innerHTML = `<p>${size}x${size}</p>`;
+                div.appendChild(canvas);
+                container.appendChild(div);
+            });
+        };
+    </script>
+</body>
+</html>
