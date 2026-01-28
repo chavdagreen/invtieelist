@@ -509,11 +509,12 @@ async function selectEvent(eventId, meta) {
     guestsRef = database.ref(`users/${currentUserId}/events/${eventId}/guests`);
     hostsRef = database.ref(`users/${currentUserId}/events/${eventId}/hosts`);
 
-    if (previousEventId !== eventId) {
+    const isEventSwitch = previousEventId !== eventId;
+    if (isEventSwitch) {
         resetEventFilters();
     }
 
-    if (previousEventId && previousEventId !== eventId) {
+    if (previousEventId && isEventSwitch) {
         guests = [];
         hosts = [];
         renderGuestTable();
