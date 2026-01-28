@@ -442,8 +442,10 @@ function saveEventMeta() {
 }
 
 function loadEventsAndRestoreSelection() {
-    const storedEventId = localStorage.getItem(getEventStorageKey());
     eventsRef.on('value', (snap) => {
+        // Read stored event ID inside the callback so it gets the latest value
+        const storedEventId = localStorage.getItem(getEventStorageKey());
+
         const events = [];
         if (snap.exists()) {
             snap.forEach((child) => {
@@ -468,10 +470,24 @@ function loadEventsAndRestoreSelection() {
             return;
         }
 
+        // If we already have a current event selected, keep it (unless it no longer exists)
+        const currentEventExists = events.find((ev) => ev.id === currentEventId);
+        if (currentEventId && currentEventExists) {
+            // Just update the meta in case it changed
+            currentEventMeta = currentEventExists.meta;
+            updateEventHeader(currentEventMeta);
+            // Update dropdown to show current selection
+            const eventSelect = document.getElementById('eventSelect');
+            if (eventSelect) eventSelect.value = currentEventId;
+            return;
+        }
+
+        // Otherwise, try to restore from localStorage or pick the first event
         const targetId = events.find((ev) => ev.id === storedEventId)?.id || events[0].id;
         const targetMeta = events.find((ev) => ev.id === targetId)?.meta || null;
         const eventSelect = document.getElementById('eventSelect');
         if (eventSelect) eventSelect.value = targetId;
+
         if (targetId !== currentEventId) {
             selectEvent(targetId, targetMeta);
         } else if (targetMeta) {
@@ -483,8 +499,11 @@ function loadEventsAndRestoreSelection() {
 
 async function selectEvent(eventId, meta) {
     if (!eventId || !currentUserId) return;
-    const previousEventId = currentEventId;
+
+    // Set current event ID first
     currentEventId = eventId;
+
+    // Fetch meta if not provided
     if (!meta && eventsRef) {
         try {
             const snap = await eventsRef.child(`${eventId}/meta`).get();
@@ -495,13 +514,16 @@ async function selectEvent(eventId, meta) {
     }
     currentEventMeta = meta || {};
     currentEventName = currentEventMeta?.name || null;
+
+    // Save to localStorage immediately
     localStorage.setItem(getEventStorageKey(), eventId);
+
+    // Update UI
     updateEventHeader(currentEventMeta);
 
+    // Sync dropdown
     const eventSelect = document.getElementById('eventSelect');
-    if (eventSelect && eventSelect.value !== eventId) {
-        eventSelect.value = eventId;
-    }
+    if (eventSelect) eventSelect.value = eventId;
 
     guestsRef?.off();
     hostsRef?.off();
