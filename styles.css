@@ -171,6 +171,7 @@ body {
     overflow: hidden;
     color: white;
     min-height: 140px;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -1219,13 +1220,13 @@ form {
     }
 
     .dashboard {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 12px;
     }
 
     .stat-card {
-        padding: 16px;
-        min-height: 120px;
+        padding: 14px;
+        min-height: 110px;
     }
 
     .stat-card .stat-value {
@@ -1250,6 +1251,14 @@ form {
     }
 
     .action-buttons .btn {
+        width: 100%;
+    }
+
+    .hero-store-buttons {
+        flex-direction: column;
+    }
+
+    .btn-store {
         width: 100%;
     }
 
@@ -1278,20 +1287,22 @@ form {
 
 @media (max-width: 480px) {
     .dashboard {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
     }
 
     .stat-card {
-        flex-direction: row;
-        align-items: center;
-        min-height: auto;
-        padding: 20px;
+        min-height: 100px;
+        padding: 12px;
     }
 
     .stat-card .stat-icon {
-        position: relative;
-        top: auto;
-        right: auto;
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 40px;
+        height: 40px;
+        font-size: 1.1rem;
     }
 
     .checkbox-grid {
@@ -1980,6 +1991,32 @@ form {
     flex-wrap: wrap;
     margin-bottom: 48px;
     justify-content: center;
+}
+
+.hero-store-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 12px;
+}
+
+.btn-store {
+    padding: 12px 20px;
+    font-size: 0.95rem;
+    border-radius: 999px;
+}
+
+.store-icon {
+    font-size: 1.1rem;
+}
+
+.hero-install-note {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    max-width: 620px;
+    text-align: center;
+    margin: 0 auto;
 }
 
 .btn-large {
