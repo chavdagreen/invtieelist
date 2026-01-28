@@ -1070,6 +1070,28 @@
         </div>
     </div>
 
+    <!-- Event Selector Bottom Sheet -->
+    <div class="bottom-sheet" id="eventSelectorSheet">
+        <div class="bottom-sheet-overlay" onclick="closeBottomSheet('eventSelectorSheet')"></div>
+        <div class="bottom-sheet-content">
+            <div class="bottom-sheet-handle"></div>
+            <div class="bottom-sheet-header">
+                <h3>Select Event</h3>
+            </div>
+            <div class="bottom-sheet-body">
+                <div class="event-list" id="eventListSheet">
+                    <!-- Events will be rendered here -->
+                </div>
+                <div class="event-list-empty" id="eventListEmpty" style="display:none;">
+                    <p>No events yet. Create your first event!</p>
+                    <button class="btn btn-primary" onclick="openEventModal(); closeBottomSheet('eventSelectorSheet');">
+                        + Create Event
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Settings Bottom Sheet -->
     <div class="bottom-sheet" id="settingsSheet">
         <div class="bottom-sheet-overlay" onclick="closeBottomSheet('settingsSheet')"></div>
@@ -1080,6 +1102,23 @@
             </div>
             <div class="bottom-sheet-body">
                 <div class="settings-menu">
+                    <div class="settings-item" onclick="openEventSelectorSheet(); closeBottomSheet('settingsSheet');">
+                        <span class="settings-icon">&#128197;</span>
+                        <div class="settings-text">
+                            <span class="settings-label">Switch Event</span>
+                            <span class="settings-desc" id="currentEventName">Select an event</span>
+                        </div>
+                        <span class="settings-arrow">&#8250;</span>
+                    </div>
+                    <div class="settings-item" onclick="openEventModal(); closeBottomSheet('settingsSheet');">
+                        <span class="settings-icon">&#10133;</span>
+                        <div class="settings-text">
+                            <span class="settings-label">Create New Event</span>
+                            <span class="settings-desc">Add a new guest list</span>
+                        </div>
+                        <span class="settings-arrow">&#8250;</span>
+                    </div>
+                    <hr class="settings-divider">
                     <div class="settings-item" onclick="openHostModal(); closeBottomSheet('settingsSheet');">
                         <span class="settings-icon">&#128100;</span>
                         <div class="settings-text">

@@ -336,10 +336,13 @@ function renderEventOptions(events) {
 function updateEventHeader(meta) {
     const titleEl = document.getElementById('eventTitle');
     const subtitleEl = document.getElementById('eventSubtitle');
+    const currentEventNameEl = document.getElementById('currentEventName');
+
     if (!titleEl || !subtitleEl) return;
     if (!meta) {
         titleEl.textContent = 'InviteePro';
         subtitleEl.textContent = 'Create multiple events and manage invitees.';
+        if (currentEventNameEl) currentEventNameEl.textContent = 'No event selected';
         return;
     }
     const date = meta.date ? new Date(meta.date).toLocaleDateString() : '';
@@ -347,6 +350,11 @@ function updateEventHeader(meta) {
     const parts = [date, venue].filter(Boolean).join(' • ');
     titleEl.textContent = meta.name || 'InviteePro';
     subtitleEl.textContent = parts || 'Manage invitees for this event.';
+
+    // Update current event name in settings sheet
+    if (currentEventNameEl) {
+        currentEventNameEl.textContent = meta.name || 'No event selected';
+    }
 }
 
 function openEventModal() {
@@ -2112,7 +2120,95 @@ function closeBottomSheet(sheetId) {
 }
 
 function openSettingsSheet() {
+    // Update current event name in settings
+    const currentEventNameEl = document.getElementById('currentEventName');
+    if (currentEventNameEl) {
+        currentEventNameEl.textContent = currentEventMeta?.name || 'No event selected';
+    }
     openBottomSheet('settingsSheet');
+}
+
+// ==================== EVENT SELECTOR SHEET ====================
+
+function openEventSelectorSheet() {
+    renderEventListSheet();
+    openBottomSheet('eventSelectorSheet');
+}
+
+function renderEventListSheet() {
+    const container = document.getElementById('eventListSheet');
+    const emptyState = document.getElementById('eventListEmpty');
+    if (!container) return;
+
+    // Get events from Firebase listener cache
+    if (!eventsRef) {
+        container.innerHTML = '';
+        if (emptyState) emptyState.style.display = 'block';
+        return;
+    }
+
+    eventsRef.once('value').then((snap) => {
+        const events = [];
+        if (snap.exists()) {
+            snap.forEach((child) => {
+                events.push({
+                    id: child.key,
+                    meta: child.child('meta').val() || {}
+                });
+            });
+        }
+
+        if (events.length === 0) {
+            container.innerHTML = '';
+            if (emptyState) emptyState.style.display = 'block';
+            return;
+        }
+
+        if (emptyState) emptyState.style.display = 'none';
+
+        container.innerHTML = events.map(event => {
+            const meta = event.meta;
+            const isActive = event.id === currentEventId;
+            const dateStr = meta.date ? new Date(meta.date).toLocaleDateString() : '';
+            const venueStr = meta.venue || '';
+            const metaStr = [dateStr, venueStr].filter(Boolean).join(' • ') || 'No date set';
+            const stats = meta.stats || {};
+
+            return `
+                <div class="event-list-item ${isActive ? 'active' : ''}" onclick="selectEventFromSheet('${event.id}')">
+                    <div class="event-list-icon">&#127881;</div>
+                    <div class="event-list-info">
+                        <div class="event-list-name">${escapeHtml(meta.name || 'Untitled Event')}</div>
+                        <div class="event-list-meta">${escapeHtml(metaStr)}</div>
+                        <div class="event-list-stats">
+                            <span class="event-list-stat">&#128101; ${stats.totalFamilies || 0} families</span>
+                            <span class="event-list-stat">&#9989; ${stats.confirmed || 0} confirmed</span>
+                        </div>
+                    </div>
+                    <span class="event-list-check">&#10003;</span>
+                </div>
+            `;
+        }).join('');
+    });
+}
+
+function selectEventFromSheet(eventId) {
+    if (!eventId) return;
+
+    // Update dropdown
+    const eventSelect = document.getElementById('eventSelect');
+    if (eventSelect) eventSelect.value = eventId;
+
+    // Select the event
+    selectEvent(eventId);
+
+    // Close the sheet
+    closeBottomSheet('eventSelectorSheet');
+
+    // Haptic feedback
+    triggerHaptic('medium');
+
+    showToast('Event switched!', 'success');
 }
 
 // ==================== TAB NAVIGATION ====================
