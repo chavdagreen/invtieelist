@@ -171,6 +171,7 @@ body {
     overflow: hidden;
     color: white;
     min-height: 140px;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -1219,13 +1220,13 @@ form {
     }
 
     .dashboard {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 12px;
     }
 
     .stat-card {
-        padding: 16px;
-        min-height: 120px;
+        padding: 14px;
+        min-height: 110px;
     }
 
     .stat-card .stat-value {
@@ -1250,6 +1251,14 @@ form {
     }
 
     .action-buttons .btn {
+        width: 100%;
+    }
+
+    .hero-store-buttons {
+        flex-direction: column;
+    }
+
+    .btn-store {
         width: 100%;
     }
 
@@ -1278,20 +1287,22 @@ form {
 
 @media (max-width: 480px) {
     .dashboard {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
     }
 
     .stat-card {
-        flex-direction: row;
-        align-items: center;
-        min-height: auto;
-        padding: 20px;
+        min-height: 100px;
+        padding: 12px;
     }
 
     .stat-card .stat-icon {
-        position: relative;
-        top: auto;
-        right: auto;
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 40px;
+        height: 40px;
+        font-size: 1.1rem;
     }
 
     .checkbox-grid {
@@ -1885,10 +1896,43 @@ form {
     z-index: 1;
 }
 
+.hero-content.hero-playful {
+    grid-template-columns: 1fr;
+    text-align: center;
+}
+
 .hero-text {
     animation: fadeInUp 0.8s ease;
 }
 
+.hero-content.hero-playful .hero-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.hero-emoji-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.hero-emoji {
+    font-size: 2.2rem;
+    background: white;
+    border-radius: 18px;
+    padding: 12px 16px;
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+    border: 1px solid rgba(124, 58, 237, 0.15);
+}
+
+.hero-logo-text {
+    font-size: 2.8rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+}
 @keyframes fadeInUp {
     from {
         opacity: 0;
@@ -1937,11 +1981,42 @@ form {
     max-width: 500px;
 }
 
+.hero-content.hero-playful .hero-subtitle {
+    max-width: 640px;
+}
+
 .hero-cta {
     display: flex;
     gap: 16px;
     flex-wrap: wrap;
     margin-bottom: 48px;
+    justify-content: center;
+}
+
+.hero-store-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 12px;
+}
+
+.btn-store {
+    padding: 12px 20px;
+    font-size: 0.95rem;
+    border-radius: 999px;
+}
+
+.store-icon {
+    font-size: 1.1rem;
+}
+
+.hero-install-note {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    max-width: 620px;
+    text-align: center;
+    margin: 0 auto;
 }
 
 .btn-large {
@@ -1952,6 +2027,8 @@ form {
 .hero-stats {
     display: flex;
     gap: 40px;
+    justify-content: center;
+    flex-wrap: wrap;
 }
 
 .hero-stat {
@@ -1975,6 +2052,48 @@ form {
 .hero-visual {
     position: relative;
     animation: fadeInRight 0.8s ease 0.2s both;
+}
+
+.hero-visual-playful {
+    margin-top: 40px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    animation: fadeInUp 0.8s ease 0.2s both;
+}
+
+.playful-card {
+    background: white;
+    border-radius: 24px;
+    padding: 20px 24px;
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+    border: 1px solid rgba(124, 58, 237, 0.12);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.playful-icon {
+    font-size: 2rem;
+    width: 52px;
+    height: 52px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 18px;
+    background: rgba(124, 58, 237, 0.12);
+}
+
+.playful-title {
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.playful-sub {
+    margin: 4px 0 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
 }
 
 @keyframes fadeInRight {
@@ -2603,6 +2722,19 @@ form {
 
     .hero-subtitle {
         font-size: 1rem;
+    }
+
+    .hero-emoji-row {
+        gap: 12px;
+    }
+
+    .hero-logo-text {
+        font-size: 2.1rem;
+    }
+
+    .hero-emoji {
+        font-size: 1.7rem;
+        padding: 10px 12px;
     }
 
     .hero-cta {

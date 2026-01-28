@@ -483,6 +483,7 @@ function loadEventsAndRestoreSelection() {
 
 async function selectEvent(eventId, meta) {
     if (!eventId || !currentUserId) return;
+    const previousEventId = currentEventId;
     currentEventId = eventId;
     if (!meta && eventsRef) {
         try {
@@ -492,16 +493,35 @@ async function selectEvent(eventId, meta) {
             meta = null;
         }
     }
-    currentEventMeta = meta || currentEventMeta || {};
+    currentEventMeta = meta || {};
     currentEventName = currentEventMeta?.name || null;
     localStorage.setItem(getEventStorageKey(), eventId);
     updateEventHeader(currentEventMeta);
+
+    const eventSelect = document.getElementById('eventSelect');
+    if (eventSelect && eventSelect.value !== eventId) {
+        eventSelect.value = eventId;
+    }
 
     guestsRef?.off();
     hostsRef?.off();
     // User-specific paths
     guestsRef = database.ref(`users/${currentUserId}/events/${eventId}/guests`);
     hostsRef = database.ref(`users/${currentUserId}/events/${eventId}/hosts`);
+
+    const isEventSwitch = previousEventId !== eventId;
+    if (isEventSwitch) {
+        resetEventFilters();
+    }
+
+    if (previousEventId && isEventSwitch) {
+        guests = [];
+        hosts = [];
+        renderGuestTable();
+        renderHostDropdowns();
+        renderHostList();
+        updateDashboard();
+    }
 
     loadGuestsFromLocal();
     loadHostsFromLocal();
@@ -1079,6 +1099,18 @@ function getFilteredGuests() {
 
 function filterAndRenderTable() {
     renderGuestTable();
+}
+
+function resetEventFilters() {
+    const searchInput = document.getElementById('searchInput');
+    const filterRsvp = document.getElementById('filterRsvp');
+    const filterFood = document.getElementById('filterFood');
+    const filterHost = document.getElementById('filterHost');
+
+    if (searchInput) searchInput.value = '';
+    if (filterRsvp) filterRsvp.value = '';
+    if (filterFood) filterFood.value = '';
+    if (filterHost) filterHost.value = '';
 }
 
 // ==================== DASHBOARD ====================
