@@ -3391,6 +3391,114 @@ form {
 }
 
 /* =========================
+   EVENT LIST IN BOTTOM SHEET
+   ========================= */
+
+.event-list {
+    padding: 0;
+}
+
+.event-list-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 20px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-bottom: 1px solid var(--border-color);
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+}
+
+.event-list-item:last-child {
+    border-bottom: none;
+}
+
+.event-list-item:active {
+    background: var(--bg-color);
+}
+
+.event-list-item.active {
+    background: rgba(124, 58, 237, 0.08);
+}
+
+.event-list-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--primary-purple);
+}
+
+.event-list-icon {
+    font-size: 1.5rem;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--gradient-purple);
+    border-radius: var(--radius-md);
+    color: white;
+}
+
+.event-list-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.event-list-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.event-list-meta {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.event-list-stats {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.event-list-stat {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    background: var(--bg-color);
+    border-radius: 10px;
+    color: var(--text-secondary);
+}
+
+.event-list-check {
+    color: var(--primary-purple);
+    font-size: 1.2rem;
+    opacity: 0;
+}
+
+.event-list-item.active .event-list-check {
+    opacity: 1;
+}
+
+.event-list-empty {
+    text-align: center;
+    padding: 40px 20px;
+}
+
+.event-list-empty p {
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+}
+
+/* =========================
    OFFLINE INDICATOR
    ========================= */
 
