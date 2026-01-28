@@ -509,10 +509,13 @@ async function selectEvent(eventId, meta) {
     guestsRef = database.ref(`users/${currentUserId}/events/${eventId}/guests`);
     hostsRef = database.ref(`users/${currentUserId}/events/${eventId}/hosts`);
 
+    if (previousEventId !== eventId) {
+        resetEventFilters();
+    }
+
     if (previousEventId && previousEventId !== eventId) {
         guests = [];
         hosts = [];
-        resetEventFilters();
         renderGuestTable();
         renderHostDropdowns();
         updateDashboard();
