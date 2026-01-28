@@ -240,6 +240,9 @@ function initUserData() {
     // Load events and templates
     loadEventsAndRestoreSelection();
     loadWhatsappTemplates();
+
+    // Load events shared with this user
+    loadSharedEvents();
 }
 
 function initEvents() {
@@ -500,7 +503,17 @@ function loadEventsAndRestoreSelection() {
 async function selectEvent(eventId, meta) {
     if (!eventId || !currentUserId) return;
 
-    // Set current event ID first
+    // Detach old listeners FIRST to prevent race conditions
+    if (guestsRef) {
+        guestsRef.off();
+        guestsRef = null;
+    }
+    if (hostsRef) {
+        hostsRef.off();
+        hostsRef = null;
+    }
+
+    // Now safe to update current event ID
     currentEventId = eventId;
 
     // Fetch meta if not provided
@@ -525,33 +538,23 @@ async function selectEvent(eventId, meta) {
     const eventSelect = document.getElementById('eventSelect');
     if (eventSelect) eventSelect.value = eventId;
 
-    guestsRef?.off();
-    hostsRef?.off();
-    // User-specific paths
+    // Set up new event-specific Firebase references
     guestsRef = database.ref(`users/${currentUserId}/events/${eventId}/guests`);
     hostsRef = database.ref(`users/${currentUserId}/events/${eventId}/hosts`);
 
-    const isEventSwitch = previousEventId !== eventId;
-    if (isEventSwitch) {
-        resetEventFilters();
-    }
-
-    if (previousEventId && isEventSwitch) {
-        guests = [];
-        hosts = [];
-        renderGuestTable();
-        renderHostDropdowns();
-        renderHostList();
-        updateDashboard();
-    }
-
-    loadGuestsFromLocal();
-    loadHostsFromLocal();
+    // Reset filters and clear current data
+    resetEventFilters();
+    guests = [];
+    hosts = [];
     renderGuestTable();
     renderHostDropdowns();
     updateDashboard();
 
+    // Attach new listeners for this event's data
     guestsRef.on('value', (snap) => {
+        // Guard: only process if this ref still matches current event
+        if (currentEventId !== eventId) return;
+
         const data = [];
         if (snap.exists()) {
             snap.forEach((child) => {
@@ -565,6 +568,9 @@ async function selectEvent(eventId, meta) {
     });
 
     hostsRef.on('value', (snap) => {
+        // Guard: only process if this ref still matches current event
+        if (currentEventId !== eventId) return;
+
         const data = [];
         if (snap.exists()) {
             snap.forEach((child) => {
@@ -576,6 +582,8 @@ async function selectEvent(eventId, meta) {
         renderHostDropdowns();
         renderHostList();
     });
+
+    console.log('[App] Switched to event:', eventId, currentEventMeta?.name || '');
 }
 
 function escapeHtml(text) {
@@ -705,15 +713,18 @@ function renderHostList() {
 
     hostListDiv.innerHTML = hosts.map(host => {
         const guestCount = guests.filter(g => g.relativeOf === host.name).length;
-        const emailBadge = host.email ? `<span class="host-email-badge" title="${escapeHtml(host.email)}">&#9993; Co-host</span>` : '';
+        const emailBadge = host.email ? `<span class="host-email-badge" title="${escapeHtml(host.email)}">&#9993; ${escapeHtml(host.email)}</span>` : '';
+        const collabBadge = host.collaborate && host.email ? `<span class="host-collab-badge">&#128274; Collaborator</span>` : '';
         return `
             <div class="host-item">
                 <div>
                     <span class="host-item-name">${escapeHtml(host.name)}</span>
                     ${emailBadge}
+                    ${collabBadge}
                     <span class="host-item-count">(${guestCount} guests)</span>
                 </div>
                 <div class="host-item-actions">
+                    ${host.email && !host.collaborate ? `<button class="btn btn-small btn-outline" onclick="grantCollabAccess('${host.firebaseKey}', '${escapeHtml(host.email)}', '${escapeHtml(host.name)}')" title="Grant access">&#128274; Share</button>` : ''}
                     <button class="btn btn-small btn-danger" onclick="deleteHost('${host.firebaseKey}', '${escapeHtml(host.name)}')">Delete</button>
                 </div>
             </div>
@@ -722,15 +733,30 @@ function renderHostList() {
 }
 
 function openHostModal() {
+    if (!currentEventId) {
+        showToast('Please select or create an event first', 'error');
+        return;
+    }
     renderHostList();
     openModal('hostModal');
 }
 
 function addHost() {
+    if (!currentEventId) {
+        showToast('Please select or create an event first', 'error');
+        return;
+    }
+    if (!hostsRef) {
+        showToast('No event selected. Please select an event first.', 'error');
+        return;
+    }
+
     const nameInput = document.getElementById('newHostName');
     const emailInput = document.getElementById('newHostEmail');
+    const collaborateInput = document.getElementById('newHostCollaborate');
     const name = nameInput.value.trim();
     const email = emailInput ? emailInput.value.trim() : '';
+    const collaborate = collaborateInput ? collaborateInput.checked : false;
 
     if (!name) {
         showToast('Please enter a host name', 'error');
@@ -743,9 +769,16 @@ function addHost() {
         return;
     }
 
+    // Validate email if collaboration is enabled
+    if (collaborate && !email) {
+        showToast('Email is required for collaboration access', 'error');
+        return;
+    }
+
     const hostData = {
         name: name,
         email: email || '',
+        collaborate: collaborate || false,
         createdAt: new Date().toISOString()
     };
 
@@ -755,6 +788,13 @@ function addHost() {
             triggerHaptic();
             nameInput.value = '';
             if (emailInput) emailInput.value = '';
+            if (collaborateInput) collaborateInput.checked = false;
+            toggleCollaborateHint();
+
+            // If collaboration enabled, share event with the co-host
+            if (collaborate && email) {
+                shareEventWithCoHost(email, name);
+            }
         })
         .catch((error) => {
             console.error('Firebase host add error:', error);
@@ -766,6 +806,7 @@ function addHost() {
             showToast('Host added locally', 'success');
             nameInput.value = '';
             if (emailInput) emailInput.value = '';
+            if (collaborateInput) collaborateInput.checked = false;
         });
 }
 
@@ -795,6 +836,11 @@ function openAddHostInline() {
 }
 
 function addHostInline() {
+    if (!currentEventId || !hostsRef) {
+        showToast('Please select or create an event first', 'error');
+        return;
+    }
+
     const nameInput = document.getElementById('inlineHostName');
     const emailInput = document.getElementById('inlineHostEmail');
     const name = nameInput.value.trim();
@@ -813,6 +859,7 @@ function addHostInline() {
     const hostData = {
         name: name,
         email: email || '',
+        collaborate: false,
         createdAt: new Date().toISOString()
     };
 
@@ -836,6 +883,186 @@ function addHostInline() {
                 document.getElementById('relativeOf').value = name;
             }, 100);
             showToast('Host added locally', 'success');
+        });
+}
+
+// ==================== HOST COLLABORATION ====================
+
+function toggleCollaborateHint() {
+    const checkbox = document.getElementById('newHostCollaborate');
+    const hint = document.getElementById('collaborateHint');
+    const emailInput = document.getElementById('newHostEmail');
+    if (hint) {
+        hint.style.display = checkbox && checkbox.checked ? 'block' : 'none';
+    }
+    // Make email required when collaboration is checked
+    if (emailInput && checkbox) {
+        emailInput.required = checkbox.checked;
+        if (checkbox.checked) {
+            emailInput.placeholder = 'Email (required for collaboration)';
+            emailInput.focus();
+        } else {
+            emailInput.placeholder = 'Email (for co-host collaboration)';
+        }
+    }
+}
+
+function shareEventWithCoHost(email, hostName) {
+    if (!email || !currentEventId || !currentUserId) return;
+
+    // Store sharing info under a shared-events node keyed by email hash
+    // This allows the co-host to find events shared with them when they log in
+    const emailKey = emailToKey(email);
+
+    const shareData = {
+        eventId: currentEventId,
+        eventName: currentEventMeta?.name || 'Untitled Event',
+        ownerUid: currentUserId,
+        ownerName: currentUser?.displayName || currentUser?.email || 'Unknown',
+        hostName: hostName,
+        sharedAt: new Date().toISOString(),
+        email: email
+    };
+
+    // Write to shared-events path so the co-host can find it
+    database.ref(`shared-events/${emailKey}/${currentUserId}_${currentEventId}`).set(shareData)
+        .then(() => {
+            // Also store in the event's meta who it's shared with
+            database.ref(`users/${currentUserId}/events/${currentEventId}/shared/${emailKey}`).set({
+                email: email,
+                hostName: hostName,
+                sharedAt: new Date().toISOString()
+            });
+            showToast(`Collaboration access granted to ${email}`, 'success');
+        })
+        .catch((error) => {
+            console.error('Failed to share event:', error);
+            showToast('Failed to grant collaboration access', 'error');
+        });
+}
+
+function emailToKey(email) {
+    // Firebase keys can't contain . # $ [ ] /
+    return email.toLowerCase().replace(/\./g, ',').replace(/[#$\[\]\/]/g, '_');
+}
+
+function loadSharedEvents() {
+    if (!currentUser || !currentUser.email) return;
+
+    const emailKey = emailToKey(currentUser.email);
+    const sharedRef = database.ref(`shared-events/${emailKey}`);
+
+    sharedRef.on('value', (snap) => {
+        if (!snap.exists()) return;
+
+        const sharedEvents = [];
+        snap.forEach((child) => {
+            sharedEvents.push(child.val());
+        });
+
+        if (sharedEvents.length > 0) {
+            renderSharedEventsBanner(sharedEvents);
+        }
+    });
+}
+
+function renderSharedEventsBanner(sharedEvents) {
+    let banner = document.getElementById('sharedEventsBanner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'sharedEventsBanner';
+        banner.className = 'shared-events-banner';
+        const container = document.querySelector('.container');
+        const dashboard = document.querySelector('.dashboard');
+        if (container && dashboard) {
+            container.insertBefore(banner, dashboard);
+        }
+    }
+
+    banner.innerHTML = `
+        <div class="shared-banner-header">
+            <span class="shared-banner-icon">&#129309;</span>
+            <strong>Shared With You</strong>
+        </div>
+        <div class="shared-banner-list">
+            ${sharedEvents.map(ev => `
+                <div class="shared-event-item" onclick="openSharedEvent('${escapeHtml(ev.ownerUid)}', '${escapeHtml(ev.eventId)}', '${escapeHtml(ev.eventName)}')">
+                    <div class="shared-event-info">
+                        <span class="shared-event-name">${escapeHtml(ev.eventName)}</span>
+                        <span class="shared-event-owner">by ${escapeHtml(ev.ownerName)}</span>
+                    </div>
+                    <span class="shared-event-arrow">&#8250;</span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+    banner.style.display = 'block';
+}
+
+async function openSharedEvent(ownerUid, eventId, eventName) {
+    if (!ownerUid || !eventId) return;
+
+    // Detach current listeners
+    if (guestsRef) { guestsRef.off(); guestsRef = null; }
+    if (hostsRef) { hostsRef.off(); hostsRef = null; }
+
+    currentEventId = eventId;
+    currentEventMeta = { name: eventName + ' (Shared)', shared: true, ownerUid: ownerUid };
+    currentEventName = currentEventMeta.name;
+
+    updateEventHeader(currentEventMeta);
+
+    // Point refs to the owner's event data (read-only unless Firebase rules allow)
+    guestsRef = database.ref(`users/${ownerUid}/events/${eventId}/guests`);
+    hostsRef = database.ref(`users/${ownerUid}/events/${eventId}/hosts`);
+
+    guests = [];
+    hosts = [];
+    renderGuestTable();
+    renderHostDropdowns();
+    updateDashboard();
+
+    guestsRef.on('value', (snap) => {
+        if (currentEventId !== eventId) return;
+        const data = [];
+        if (snap.exists()) {
+            snap.forEach((child) => {
+                data.push({ ...child.val(), firebaseKey: child.key });
+            });
+        }
+        guests = data;
+        renderGuestTable();
+        updateDashboard();
+    });
+
+    hostsRef.on('value', (snap) => {
+        if (currentEventId !== eventId) return;
+        const data = [];
+        if (snap.exists()) {
+            snap.forEach((child) => {
+                data.push({ ...child.val(), firebaseKey: child.key });
+            });
+        }
+        hosts = data;
+        renderHostDropdowns();
+        renderHostList();
+    });
+
+    showToast(`Viewing shared event: ${eventName}`, 'success');
+}
+
+function grantCollabAccess(firebaseKey, email, hostName) {
+    if (!email || !firebaseKey || !hostsRef) return;
+
+    if (!confirm(`Grant collaboration access to ${email} for this event?`)) return;
+
+    hostsRef.child(firebaseKey).update({ collaborate: true })
+        .then(() => {
+            shareEventWithCoHost(email, hostName);
+        })
+        .catch((error) => {
+            console.error('Failed to update host:', error);
+            showToast('Failed to grant access', 'error');
         });
 }
 
@@ -863,6 +1090,10 @@ function generateId() {
 
 // Modal Operations
 function openAddModal() {
+    if (!currentEventId) {
+        showToast('Please select or create an event first', 'error');
+        return;
+    }
     document.getElementById('modalTitle').textContent = 'Add New Guest';
     document.getElementById('guestForm').reset();
     document.getElementById('guestId').value = '';
