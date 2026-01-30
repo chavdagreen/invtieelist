@@ -483,6 +483,7 @@ function loadEventsAndRestoreSelection() {
 
 async function selectEvent(eventId, meta) {
     if (!eventId || !currentUserId) return;
+    const previousEventId = currentEventId;
     currentEventId = eventId;
     if (!meta && eventsRef) {
         try {
@@ -492,16 +493,35 @@ async function selectEvent(eventId, meta) {
             meta = null;
         }
     }
-    currentEventMeta = meta || currentEventMeta || {};
+    currentEventMeta = meta || {};
     currentEventName = currentEventMeta?.name || null;
     localStorage.setItem(getEventStorageKey(), eventId);
     updateEventHeader(currentEventMeta);
+
+    const eventSelect = document.getElementById('eventSelect');
+    if (eventSelect && eventSelect.value !== eventId) {
+        eventSelect.value = eventId;
+    }
 
     guestsRef?.off();
     hostsRef?.off();
     // User-specific paths
     guestsRef = database.ref(`users/${currentUserId}/events/${eventId}/guests`);
     hostsRef = database.ref(`users/${currentUserId}/events/${eventId}/hosts`);
+
+    const isEventSwitch = previousEventId !== eventId;
+    if (isEventSwitch) {
+        resetEventFilters();
+    }
+
+    if (previousEventId && isEventSwitch) {
+        guests = [];
+        hosts = [];
+        renderGuestTable();
+        renderHostDropdowns();
+        renderHostList();
+        updateDashboard();
+    }
 
     loadGuestsFromLocal();
     loadHostsFromLocal();
@@ -672,11 +692,73 @@ function renderHostList() {
                     <span class="host-item-count">(${guestCount} guests)</span>
                 </div>
                 <div class="host-item-actions">
+                    <button class="btn btn-small btn-outline" onclick="openEditHostModal('${host.firebaseKey}')" title="Edit host">✏️</button>
                     <button class="btn btn-small btn-danger" onclick="deleteHost('${host.firebaseKey}', '${escapeHtml(host.name)}')">Delete</button>
                 </div>
             </div>
         `;
     }).join('');
+}
+
+function openEditHostModal(firebaseKey) {
+    const host = hosts.find(item => item.firebaseKey === firebaseKey);
+    if (!host) return;
+    const modal = document.getElementById('hostEditModal');
+    if (!modal) return;
+    modal.dataset.hostKey = firebaseKey;
+    document.getElementById('editHostName').value = host.name || '';
+    document.getElementById('editHostEmail').value = host.email || '';
+    const shareToggle = document.getElementById('editHostShareToggle');
+    if (shareToggle) shareToggle.checked = Boolean(host.shareEnabled);
+    openModal('hostEditModal');
+}
+
+function saveHostEdits(event) {
+    event.preventDefault();
+    const modal = document.getElementById('hostEditModal');
+    const firebaseKey = modal?.dataset.hostKey;
+    if (!firebaseKey) return;
+
+    const name = document.getElementById('editHostName').value.trim();
+    const email = document.getElementById('editHostEmail').value.trim();
+    const shareToggle = document.getElementById('editHostShareToggle');
+    const shareEnabled = shareToggle ? shareToggle.checked : false;
+
+    if (!name) {
+        showToast('Please enter a host name', 'error');
+        return;
+    }
+
+    const duplicate = hosts.find(host => host.firebaseKey !== firebaseKey && host.name.toLowerCase() === name.toLowerCase());
+    if (duplicate) {
+        showToast('Another host already uses this name', 'error');
+        return;
+    }
+
+    const payload = {
+        name,
+        email: email || '',
+        shareEnabled,
+        updatedAt: new Date().toISOString()
+    };
+
+    hostsRef.child(firebaseKey).update(payload)
+        .then(() => {
+            showToast('Host updated successfully!', 'success');
+            closeModal('hostEditModal');
+        })
+        .catch((error) => {
+            console.error('Firebase host update error:', error);
+            const index = hosts.findIndex(item => item.firebaseKey === firebaseKey);
+            if (index !== -1) {
+                hosts[index] = { ...hosts[index], ...payload };
+                localStorage.setItem(getHostsStorageKey(), JSON.stringify(hosts));
+                renderHostDropdowns();
+                renderHostList();
+            }
+            showToast('Saved host changes locally', 'success');
+            closeModal('hostEditModal');
+        });
 }
 
 function openHostModal() {
@@ -1079,6 +1161,18 @@ function getFilteredGuests() {
 
 function filterAndRenderTable() {
     renderGuestTable();
+}
+
+function resetEventFilters() {
+    const searchInput = document.getElementById('searchInput');
+    const filterRsvp = document.getElementById('filterRsvp');
+    const filterFood = document.getElementById('filterFood');
+    const filterHost = document.getElementById('filterHost');
+
+    if (searchInput) searchInput.value = '';
+    if (filterRsvp) filterRsvp.value = '';
+    if (filterFood) filterFood.value = '';
+    if (filterHost) filterHost.value = '';
 }
 
 // ==================== DASHBOARD ====================
