@@ -804,17 +804,22 @@ function renderHostList() {
     hostListDiv.innerHTML = hosts.map(host => {
         const guestCount = guests.filter(g => g.relativeOf === host.name).length;
         const emailBadge = host.email ? `<span class="host-email-badge" title="${escapeHtml(host.email)}">&#9993; ${escapeHtml(host.email)}</span>` : '';
+        const mobileBadge = host.mobile ? `<span class="host-mobile-badge" title="${escapeHtml(host.mobile)}">&#128222; ${escapeHtml(host.mobile)}</span>` : '';
         const collabBadge = host.collaborate && host.email ? `<span class="host-collab-badge">&#128274; Collaborator</span>` : '';
         return `
             <div class="host-item">
-                <div>
+                <div class="host-item-info">
                     <span class="host-item-name">${escapeHtml(host.name)}</span>
-                    ${emailBadge}
-                    ${collabBadge}
-                    <span class="host-item-count">(${guestCount} guests)</span>
+                    <div class="host-item-badges">
+                        ${emailBadge}
+                        ${mobileBadge}
+                        ${collabBadge}
+                    </div>
+                    <span class="host-item-count">${guestCount} guest${guestCount !== 1 ? 's' : ''} linked</span>
                 </div>
                 <div class="host-item-actions">
                     ${host.email && !host.collaborate ? `<button class="btn btn-small btn-outline" onclick="grantCollabAccess('${host.firebaseKey}', '${escapeHtml(host.email)}', '${escapeHtml(host.name)}')" title="Grant access">&#128274; Share</button>` : ''}
+                    ${host.collaborate && host.email ? `<button class="btn btn-small btn-outline" onclick="sendCollaborationEmail('${escapeHtml(host.email)}', '${escapeHtml(host.name)}')" title="Resend invite">&#9993; Resend</button>` : ''}
                     <button class="btn btn-small btn-danger" onclick="deleteHost('${host.firebaseKey}', '${escapeHtml(host.name)}')">Delete</button>
                 </div>
             </div>
@@ -843,9 +848,11 @@ function addHost() {
 
     const nameInput = document.getElementById('newHostName');
     const emailInput = document.getElementById('newHostEmail');
+    const mobileInput = document.getElementById('newHostMobile');
     const collaborateInput = document.getElementById('newHostCollaborate');
     const name = nameInput.value.trim();
     const email = emailInput ? emailInput.value.trim() : '';
+    const mobile = mobileInput ? mobileInput.value.trim() : '';
     const collaborate = collaborateInput ? collaborateInput.checked : false;
 
     if (!name) {
@@ -865,9 +872,16 @@ function addHost() {
         return;
     }
 
+    // Validate mobile if provided
+    if (mobile && !/^\d{10}$/.test(mobile)) {
+        showToast('Please enter a valid 10-digit mobile number', 'error');
+        return;
+    }
+
     const hostData = {
         name: name,
         email: email || '',
+        mobile: mobile || '',
         collaborate: collaborate || false,
         createdAt: new Date().toISOString()
     };
@@ -878,17 +892,18 @@ function addHost() {
             triggerHaptic();
             nameInput.value = '';
             if (emailInput) emailInput.value = '';
+            if (mobileInput) mobileInput.value = '';
             if (collaborateInput) collaborateInput.checked = false;
             toggleCollaborateHint();
 
-            // If collaboration enabled, share event with the co-host
+            // If collaboration enabled, share event and send email invite
             if (collaborate && email) {
                 shareEventWithCoHost(email, name);
+                sendCollaborationEmail(email, name);
             }
         })
         .catch((error) => {
             console.error('Firebase host add error:', error);
-            // Fallback: save locally
             hosts.push({ ...hostData, id: generateId() });
             localStorage.setItem(getHostsStorageKey(), JSON.stringify(hosts));
             renderHostDropdowns();
@@ -896,6 +911,7 @@ function addHost() {
             showToast('Host added locally', 'success');
             nameInput.value = '';
             if (emailInput) emailInput.value = '';
+            if (mobileInput) mobileInput.value = '';
             if (collaborateInput) collaborateInput.checked = false;
         });
 }
@@ -1255,6 +1271,30 @@ function verifySharedAccess(ownerUid, eventId) {
         });
 }
 
+function sendCollaborationEmail(email, hostName) {
+    if (!email) return;
+
+    const eventName = currentEventMeta?.name || 'an event';
+    const ownerName = currentUser?.displayName || currentUser?.email || 'Someone';
+    const appUrl = window.location.href.split('?')[0];
+
+    const subject = encodeURIComponent(`You're invited to collaborate on "${eventName}" - InviteePro`);
+    const body = encodeURIComponent(
+        `Hi ${hostName},\n\n` +
+        `${ownerName} has invited you to collaborate on the guest list for "${eventName}" using InviteePro.\n\n` +
+        `You can add, edit, and manage the guest list together as a family.\n\n` +
+        `To get started:\n` +
+        `1. Open InviteePro: ${appUrl}\n` +
+        `2. Sign in or create an account using this email: ${email}\n` +
+        `3. The shared event will appear automatically in your dashboard\n\n` +
+        `Happy planning!\n${ownerName}`
+    );
+
+    // Open default email client
+    window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+    showToast(`Email invitation opened for ${email}`, 'success');
+}
+
 function grantCollabAccess(firebaseKey, email, hostName) {
     if (!email || !firebaseKey || !hostsRef) return;
 
@@ -1302,7 +1342,11 @@ function openAddModal() {
     document.getElementById('guestForm').reset();
     document.getElementById('guestId').value = '';
     document.getElementById('giftDescGroup').style.display = 'none';
-    document.getElementById('foodPref').value = 'Regular'; // Default
+    // Reset food split to defaults
+    document.getElementById('foodRegular').value = 1;
+    document.getElementById('foodSwaminarayan').value = 0;
+    document.getElementById('foodJain').value = 0;
+    updateFoodSplitDisplay();
     renderHostDropdowns();
     renderStatusTimeline(null);
     openModal('guestModal');
@@ -1319,7 +1363,7 @@ function openEditModal(id) {
     document.getElementById('relativeOf').value = guest.relativeOf || '';
     document.getElementById('members').value = guest.members;
     document.getElementById('whatsapp').value = guest.whatsapp;
-    document.getElementById('foodPref').value = guest.foodPref || 'Regular';
+    setFoodSplitFromGuest(guest);
     document.getElementById('rsvpStatus').value = guest.rsvpStatus;
     const callDoneEl = document.getElementById('callDone');
     if (callDoneEl) callDoneEl.checked = guest.callDone || false;
@@ -1356,11 +1400,141 @@ function toggleGiftDescription() {
     document.getElementById('giftDescGroup').style.display = giftGiven ? 'block' : 'none';
 }
 
+// ==================== FOOD SPLIT ====================
+
+function updateFoodSplit() {
+    const members = parseInt(document.getElementById('members').value) || 1;
+    const regular = parseInt(document.getElementById('foodRegular').value) || 0;
+    const swaminarayan = parseInt(document.getElementById('foodSwaminarayan').value) || 0;
+    const jain = parseInt(document.getElementById('foodJain').value) || 0;
+    const total = regular + swaminarayan + jain;
+
+    // If total doesn't match members, adjust Regular to fill the gap
+    if (total !== members) {
+        const diff = members - (swaminarayan + jain);
+        document.getElementById('foodRegular').value = Math.max(0, diff);
+    }
+
+    updateFoodSplitDisplay();
+}
+
+function adjustFoodSplit(changedType) {
+    const members = parseInt(document.getElementById('members').value) || 1;
+    let regular = parseInt(document.getElementById('foodRegular').value) || 0;
+    let swaminarayan = parseInt(document.getElementById('foodSwaminarayan').value) || 0;
+    let jain = parseInt(document.getElementById('foodJain').value) || 0;
+
+    const total = regular + swaminarayan + jain;
+
+    if (total > members) {
+        // Reduce other fields to fit
+        if (changedType === 'Regular') {
+            const remaining = members - regular;
+            if (swaminarayan + jain > remaining) {
+                const ratio = remaining / (swaminarayan + jain || 1);
+                swaminarayan = Math.floor(swaminarayan * ratio);
+                jain = remaining - swaminarayan;
+            }
+        } else if (changedType === 'Swaminarayan') {
+            const remaining = members - swaminarayan;
+            if (regular + jain > remaining) {
+                jain = Math.min(jain, remaining);
+                regular = remaining - jain;
+            }
+        } else if (changedType === 'Jain') {
+            const remaining = members - jain;
+            if (regular + swaminarayan > remaining) {
+                swaminarayan = Math.min(swaminarayan, remaining);
+                regular = remaining - swaminarayan;
+            }
+        }
+        document.getElementById('foodRegular').value = Math.max(0, regular);
+        document.getElementById('foodSwaminarayan').value = Math.max(0, swaminarayan);
+        document.getElementById('foodJain').value = Math.max(0, jain);
+    } else if (total < members) {
+        // Auto-fill remaining into Regular
+        regular = members - swaminarayan - jain;
+        document.getElementById('foodRegular').value = Math.max(0, regular);
+    }
+
+    updateFoodSplitDisplay();
+}
+
+function updateFoodSplitDisplay() {
+    const members = parseInt(document.getElementById('members').value) || 1;
+    const regular = parseInt(document.getElementById('foodRegular').value) || 0;
+    const swaminarayan = parseInt(document.getElementById('foodSwaminarayan').value) || 0;
+    const jain = parseInt(document.getElementById('foodJain').value) || 0;
+    const total = regular + swaminarayan + jain;
+
+    document.getElementById('foodSplitSum').textContent = total;
+    document.getElementById('foodSplitMembers').textContent = members;
+
+    const totalEl = document.getElementById('foodSplitTotal');
+    if (totalEl) {
+        totalEl.classList.toggle('mismatch', total !== members);
+        totalEl.classList.toggle('match', total === members);
+    }
+}
+
+function getFoodSplitData() {
+    return {
+        regular: parseInt(document.getElementById('foodRegular').value) || 0,
+        swaminarayan: parseInt(document.getElementById('foodSwaminarayan').value) || 0,
+        jain: parseInt(document.getElementById('foodJain').value) || 0
+    };
+}
+
+function setFoodSplitFromGuest(guest) {
+    const members = guest.members || 1;
+    if (guest.foodSplit) {
+        document.getElementById('foodRegular').value = guest.foodSplit.regular || 0;
+        document.getElementById('foodSwaminarayan').value = guest.foodSplit.swaminarayan || 0;
+        document.getElementById('foodJain').value = guest.foodSplit.jain || 0;
+    } else {
+        // Backward compatibility: convert old single foodPref to split
+        const pref = guest.foodPref || 'Regular';
+        document.getElementById('foodRegular').value = pref === 'Regular' ? members : 0;
+        document.getElementById('foodSwaminarayan').value = pref === 'Swaminarayan' ? members : 0;
+        document.getElementById('foodJain').value = pref === 'Jain' ? members : 0;
+    }
+    updateFoodSplitDisplay();
+}
+
+function getFoodPrefLabel(guest) {
+    if (guest.foodSplit) {
+        const parts = [];
+        if (guest.foodSplit.regular > 0) parts.push(`${guest.foodSplit.regular}R`);
+        if (guest.foodSplit.swaminarayan > 0) parts.push(`${guest.foodSplit.swaminarayan}S`);
+        if (guest.foodSplit.jain > 0) parts.push(`${guest.foodSplit.jain}J`);
+        return parts.join(' + ') || 'Regular';
+    }
+    return guest.foodPref || 'Regular';
+}
+
+function getFoodPrefBadgeClass(guest) {
+    if (guest.foodSplit) {
+        const { regular, swaminarayan, jain } = guest.foodSplit;
+        if (swaminarayan === 0 && jain === 0) return 'regular';
+        if (regular === 0 && jain === 0) return 'swaminarayan';
+        if (regular === 0 && swaminarayan === 0) return 'jain';
+        return 'mixed';
+    }
+    return (guest.foodPref || 'Regular').toLowerCase();
+}
+
 function saveGuest(event) {
     event.preventDefault();
 
     const id = document.getElementById('guestId').value;
     const existingGuest = id ? guests.find(g => g.id === id) : null;
+
+    const foodSplit = getFoodSplitData();
+    // Determine primary food pref for backward compatibility and filtering
+    let primaryFoodPref = 'Regular';
+    if (foodSplit.swaminarayan > foodSplit.regular && foodSplit.swaminarayan >= foodSplit.jain) primaryFoodPref = 'Swaminarayan';
+    else if (foodSplit.jain > foodSplit.regular && foodSplit.jain > foodSplit.swaminarayan) primaryFoodPref = 'Jain';
+    if (foodSplit.regular > 0 && (foodSplit.swaminarayan > 0 || foodSplit.jain > 0)) primaryFoodPref = 'Mixed';
 
     const callDoneEl = document.getElementById('callDone');
     const guestData = {
@@ -1370,7 +1544,8 @@ function saveGuest(event) {
         relativeOf: document.getElementById('relativeOf').value,
         members: parseInt(document.getElementById('members').value) || 1,
         whatsapp: document.getElementById('whatsapp').value.trim(),
-        foodPref: document.getElementById('foodPref').value || 'Regular',
+        foodPref: primaryFoodPref,
+        foodSplit: foodSplit,
         rsvpStatus: document.getElementById('rsvpStatus').value,
         callDone: callDoneEl ? callDoneEl.checked : (existingGuest?.callDone || false),
         giftGiven: document.getElementById('giftGiven').checked,
@@ -1501,7 +1676,7 @@ function renderGuestTable() {
             <td>
                 <a href="javascript:void(0)" class="whatsapp-btn" onclick="sendWhatsappInvite('${guest.whatsapp}','${(guest.firstName||'').replace(/'/g,"\\'")} ${ (guest.surname||'').replace(/'/g,"\\'") }'.trim())">&#128172; WhatsApp</a>
             </td>
-            <td><span class="badge badge-${(guest.foodPref || 'Regular').toLowerCase()}">${guest.foodPref || 'Regular'}</span></td>
+            <td><span class="badge badge-${getFoodPrefBadgeClass(guest)}">${getFoodPrefLabel(guest)}</span></td>
             <td><span class="badge badge-${guest.rsvpStatus.toLowerCase()}">${guest.rsvpStatus}</span></td>
             <td>
                 <button class="call-toggle-btn ${guest.callDone ? 'done' : ''}" onclick="toggleCallDone('${guest.id}')" title="${guest.callDone ? 'Called' : 'Mark as called'}">
@@ -1547,7 +1722,8 @@ function getFilteredGuests() {
             (guest.notes && guest.notes.toLowerCase().includes(searchTerm));
 
         const matchesRsvp = !rsvpFilter || guest.rsvpStatus === rsvpFilter;
-        const matchesFood = !foodFilter || guest.foodPref === foodFilter;
+        const matchesFood = !foodFilter || guest.foodPref === foodFilter ||
+            (guest.foodSplit && guest.foodSplit[foodFilter.toLowerCase()] > 0);
         const matchesHost = !hostFilter || guest.relativeOf === hostFilter;
 
         return matchesSearch && matchesRsvp && matchesFood && matchesHost;
@@ -1579,8 +1755,18 @@ function updateDashboard() {
         confirmed: guests.filter(g => g.rsvpStatus === 'Confirmed').length,
         pending: guests.filter(g => g.rsvpStatus === 'Pending').length,
         declined: guests.filter(g => g.rsvpStatus === 'Declined').length,
-        regular: guests.filter(g => (g.foodPref || 'Regular') === 'Regular').reduce((sum, g) => sum + g.members, 0),
-        swaminarayan: guests.filter(g => g.foodPref === 'Swaminarayan').reduce((sum, g) => sum + g.members, 0),
+        regular: guests.reduce((sum, g) => {
+            if (g.foodSplit) return sum + (g.foodSplit.regular || 0);
+            return sum + ((g.foodPref || 'Regular') === 'Regular' ? g.members : 0);
+        }, 0),
+        swaminarayan: guests.reduce((sum, g) => {
+            if (g.foodSplit) return sum + (g.foodSplit.swaminarayan || 0);
+            return sum + (g.foodPref === 'Swaminarayan' ? g.members : 0);
+        }, 0),
+        jain: guests.reduce((sum, g) => {
+            if (g.foodSplit) return sum + (g.foodSplit.jain || 0);
+            return sum + (g.foodPref === 'Jain' ? g.members : 0);
+        }, 0),
         gifts: guests.filter(g => g.giftGiven).length,
         callsDone: guests.filter(g => g.callDone).length,
         callsPending: guests.filter(g => !g.callDone).length
@@ -1593,6 +1779,8 @@ function updateDashboard() {
 
     document.getElementById('regularCount').textContent = stats.regular;
     document.getElementById('swaminarayanCount').textContent = stats.swaminarayan;
+    const jainCountEl = document.getElementById('jainCount');
+    if (jainCountEl) jainCountEl.textContent = stats.jain;
 
     document.getElementById('statusConfirmed').textContent = stats.confirmed;
     document.getElementById('statusPending').textContent = stats.pending;
@@ -1667,7 +1855,7 @@ function exportToExcel() {
         if (columns.relativeOf) row['Relative Of'] = guest.relativeOf || '-';
         if (columns.members) row['Members'] = guest.members;
         if (columns.whatsapp) row['WhatsApp'] = `+91 ${formatPhone(guest.whatsapp)}`;
-        if (columns.food) row['Food Preference'] = guest.foodPref || 'Regular';
+        if (columns.food) row['Food Preference'] = getFoodPrefLabel(guest);
         if (columns.rsvp) row['RSVP Status'] = guest.rsvpStatus;
         if (columns.gift) row['Gift'] = guest.giftGiven ? (guest.giftDescription || 'Yes') : 'No';
         if (columns.notes) row['Notes'] = guest.notes || '';
@@ -1741,7 +1929,7 @@ function exportToPDF() {
         if (columns.relativeOf) row.push(guest.relativeOf || '-');
         if (columns.members) row.push(guest.members);
         if (columns.whatsapp) row.push(`+91 ${guest.whatsapp}`);
-        if (columns.food) row.push(guest.foodPref || 'Regular');
+        if (columns.food) row.push(getFoodPrefLabel(guest));
         if (columns.rsvp) row.push(guest.rsvpStatus);
         if (columns.gift) row.push(guest.giftGiven ? (guest.giftDescription || 'Yes') : 'No');
         if (columns.notes) row.push(guest.notes || '-');
