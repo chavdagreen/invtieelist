@@ -1,0 +1,50 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        // Only the owner can read/write their own data by default
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+
+        "events": {
+          "$eventId": {
+            // Allow collaborators to read and write event data
+            "guests": {
+              ".read": "auth != null && (auth.uid === $uid || root.child('users/' + $uid + '/events/' + $eventId + '/collaborators').once('value').val() != null && root.child('users/' + $uid + '/events/' + $eventId + '/collaborators').orderByChild('uid').equalTo(auth.uid).exists())",
+              ".write": "auth != null && (auth.uid === $uid || root.child('users/' + $uid + '/events/' + $eventId + '/collaborators').orderByChild('uid').equalTo(auth.uid).exists())"
+            },
+            "hosts": {
+              ".read": "auth != null && (auth.uid === $uid || root.child('users/' + $uid + '/events/' + $eventId + '/collaborators').orderByChild('uid').equalTo(auth.uid).exists())",
+              ".write": "auth != null && (auth.uid === $uid || root.child('users/' + $uid + '/events/' + $eventId + '/collaborators').orderByChild('uid').equalTo(auth.uid).exists())"
+            },
+            "meta": {
+              ".read": "auth != null && (auth.uid === $uid || root.child('users/' + $uid + '/events/' + $eventId + '/collaborators').orderByChild('uid').equalTo(auth.uid).exists())",
+              ".write": "auth != null && auth.uid === $uid"
+            },
+            "collaborators": {
+              ".read": "auth != null && auth.uid === $uid",
+              ".write": "auth != null && auth.uid === $uid",
+              "$emailKey": {
+                "uid": {
+                  // Allow a collaborator to register their own UID
+                  ".write": "auth != null && !data.exists()"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "shared-events": {
+      "$emailKey": {
+        // Anyone authenticated can read their own shared events
+        ".read": "auth != null",
+        "$shareId": {
+          // Only the event owner can write sharing entries
+          ".write": "auth != null"
+        }
+      }
+    }
+  }
+}

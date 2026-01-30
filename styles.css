@@ -2683,6 +2683,20 @@ form {
     text-decoration: underline;
 }
 
+.auth-forgot {
+    text-align: right;
+    margin: -8px 0 8px;
+    font-size: 0.85rem;
+}
+.auth-forgot a {
+    color: var(--text-secondary);
+    text-decoration: none;
+}
+.auth-forgot a:hover {
+    color: var(--primary-purple);
+    text-decoration: underline;
+}
+
 /* Responsive Landing Page */
 @media (max-width: 1024px) {
     .hero-content {

@@ -154,6 +154,41 @@ function toggleMobileMenu() {
     }
 }
 
+// Friendly error messages for Firebase auth errors
+function getAuthErrorMessage(error) {
+    const code = error.code || '';
+    switch (code) {
+        case 'auth/user-not-found':
+            return 'No account found with this email. Please sign up first.';
+        case 'auth/wrong-password':
+        case 'auth/invalid-credential':
+            return 'Incorrect password. Please try again or reset your password.';
+        case 'auth/invalid-email':
+            return 'Please enter a valid email address.';
+        case 'auth/email-already-in-use':
+            return 'An account with this email already exists. Please sign in instead.';
+        case 'auth/weak-password':
+            return 'Password is too weak. Use at least 6 characters with a mix of letters and numbers.';
+        case 'auth/too-many-requests':
+            return 'Too many failed attempts. Please wait a few minutes and try again.';
+        case 'auth/network-request-failed':
+            return 'Network error. Please check your internet connection and try again.';
+        case 'auth/popup-closed-by-user':
+            return 'Sign-in was cancelled. Please try again.';
+        case 'auth/popup-blocked':
+            return 'Sign-in popup was blocked. Please allow popups for this site.';
+        case 'auth/account-exists-with-different-credential':
+            return 'An account already exists with the same email but different sign-in method.';
+        case 'auth/user-disabled':
+            return 'This account has been disabled. Please contact support.';
+        case 'auth/operation-not-allowed':
+            return 'This sign-in method is not enabled. Please contact the app administrator.';
+        default:
+            console.warn('Unhandled auth error code:', code);
+            return error.message || 'An unexpected error occurred. Please try again.';
+    }
+}
+
 function signInWithGoogle() {
     const provider = new firebase.auth.GoogleAuthProvider();
     auth.signInWithPopup(provider)
@@ -162,7 +197,7 @@ function signInWithGoogle() {
         })
         .catch((error) => {
             console.error('Google sign-in error:', error);
-            showToast(error.message || 'Sign-in failed', 'error');
+            showToast(getAuthErrorMessage(error), 'error');
         });
 }
 
@@ -181,7 +216,7 @@ function signInWithEmail() {
         })
         .catch((error) => {
             console.error('Email sign-in error:', error);
-            showToast(error.message || 'Sign-in failed', 'error');
+            showToast(getAuthErrorMessage(error), 'error');
         });
 }
 
@@ -202,7 +237,6 @@ function signUpWithEmail() {
 
     auth.createUserWithEmailAndPassword(email, password)
         .then((result) => {
-            // Update profile with name
             return result.user.updateProfile({ displayName: name });
         })
         .then(() => {
@@ -210,7 +244,25 @@ function signUpWithEmail() {
         })
         .catch((error) => {
             console.error('Sign-up error:', error);
-            showToast(error.message || 'Sign-up failed', 'error');
+            showToast(getAuthErrorMessage(error), 'error');
+        });
+}
+
+function sendPasswordReset() {
+    const email = document.getElementById('resetEmail').value.trim();
+    if (!email) {
+        showToast('Please enter your email address', 'error');
+        return;
+    }
+
+    auth.sendPasswordResetEmail(email)
+        .then(() => {
+            showToast('Password reset link sent! Check your inbox.', 'success');
+            showLoginForm();
+        })
+        .catch((error) => {
+            console.error('Password reset error:', error);
+            showToast(getAuthErrorMessage(error), 'error');
         });
 }
 
@@ -221,7 +273,7 @@ function signOutUser() {
                 showToast('Signed out successfully', 'success');
             })
             .catch((error) => {
-                showToast('Sign-out failed', 'error');
+                showToast('Sign-out failed. Please try again.', 'error');
             });
     }
 }
@@ -229,11 +281,22 @@ function signOutUser() {
 function showSignupForm() {
     document.getElementById('loginForm').style.display = 'none';
     document.getElementById('signupForm').style.display = 'block';
+    const forgotForm = document.getElementById('forgotPasswordForm');
+    if (forgotForm) forgotForm.style.display = 'none';
+}
+
+function showForgotPasswordForm() {
+    document.getElementById('loginForm').style.display = 'none';
+    document.getElementById('signupForm').style.display = 'none';
+    document.getElementById('forgotPasswordForm').style.display = 'block';
+    document.getElementById('resetEmail').focus();
 }
 
 function showLoginForm() {
     document.getElementById('signupForm').style.display = 'none';
     document.getElementById('loginForm').style.display = 'block';
+    const forgotForm = document.getElementById('forgotPasswordForm');
+    if (forgotForm) forgotForm.style.display = 'none';
 }
 
 function initUserData() {

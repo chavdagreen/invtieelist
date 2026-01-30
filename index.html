@@ -273,8 +273,29 @@
 
                 <button class="btn btn-primary btn-auth" onclick="signInWithEmail()">Sign In</button>
 
+                <p class="auth-forgot">
+                    <a href="#" onclick="showForgotPasswordForm(); return false;">Forgot password?</a>
+                </p>
+
                 <p class="auth-switch">
                     Don't have an account? <a href="#" onclick="showSignupForm(); return false;">Create one</a>
+                </p>
+            </div>
+
+            <!-- Forgot Password Form -->
+            <div id="forgotPasswordForm" class="auth-form" style="display: none;">
+                <h2>Reset Password</h2>
+                <p>Enter your email and we'll send a reset link</p>
+
+                <div class="auth-input-group">
+                    <label>Email</label>
+                    <input type="email" id="resetEmail" placeholder="you@example.com">
+                </div>
+
+                <button class="btn btn-primary btn-auth" onclick="sendPasswordReset()">Send Reset Link</button>
+
+                <p class="auth-switch">
+                    Remember your password? <a href="#" onclick="showLoginForm(); return false;">Sign in</a>
                 </p>
             </div>
 
