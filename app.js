@@ -27,6 +27,12 @@ let hostsRef = null;
 let eventsRef = null;
 let templatesRef = null;
 
+// Collaboration: maps shared eventId -> ownerUid
+let sharedEventOwners = {};
+// All events including shared ones for rendering
+let allEvents = [];
+let sharedEventsLoaded = false;
+
 // Data Storage Keys (for local backup)
 const STORAGE_KEY_BASE = 'inviteeProGuests';
 const HOSTS_STORAGE_KEY_BASE = 'inviteeProHosts';
@@ -267,6 +273,9 @@ function initUserData() {
     // Load events and templates
     loadEventsAndRestoreSelection();
     loadWhatsappTemplates();
+
+    // Load events shared with this user
+    loadSharedEvents();
 }
 
 function initEvents() {
@@ -292,9 +301,17 @@ function setupEventListeners() {
     if (filterHost) filterHost.addEventListener('change', filterAndRenderTable);
     if (eventSelect) {
         eventSelect.addEventListener('change', (event) => {
-            const eventId = event.target.value;
-            if (eventId) {
-                selectEvent(eventId);
+            const val = event.target.value;
+            if (!val) return;
+
+            // Check if this is a shared event (format: shared_{ownerUid}_{eventId})
+            if (val.startsWith('shared_')) {
+                const parts = val.split('_');
+                const ownerUid = parts[1];
+                const eventId = parts.slice(2).join('_');
+                selectSharedEvent(ownerUid, eventId);
+            } else {
+                selectEvent(val);
             }
         });
     }
@@ -348,16 +365,71 @@ function loadHostsFromLocal() {
     }
 }
 
-function renderEventOptions(events) {
+function renderEventOptions(ownEvents) {
     const eventSelect = document.getElementById('eventSelect');
     if (!eventSelect) return;
     eventSelect.innerHTML = '<option value="">Select Event</option>';
-    events.forEach((event) => {
-        const option = document.createElement('option');
-        option.value = event.id;
-        option.textContent = event.meta?.name || 'Untitled Event';
-        eventSelect.appendChild(option);
+
+    // Combine own events + shared events
+    allEvents = [];
+
+    // Add own events
+    ownEvents.forEach((event) => {
+        allEvents.push({ ...event, isShared: false });
     });
+
+    // Add shared events (avoid duplicates)
+    Object.keys(sharedEventOwners).forEach((key) => {
+        const shared = sharedEventOwners[key];
+        const alreadyExists = allEvents.some(e => e.id === shared.eventId);
+        if (!alreadyExists) {
+            allEvents.push({
+                id: shared.eventId,
+                meta: { name: shared.eventName },
+                isShared: true,
+                ownerUid: shared.ownerUid,
+                ownerName: shared.ownerName
+            });
+        }
+    });
+
+    // Render own events
+    const ownGroup = ownEvents.length > 0;
+    if (ownGroup && Object.keys(sharedEventOwners).length > 0) {
+        const ownOptGroup = document.createElement('optgroup');
+        ownOptGroup.label = 'My Events';
+        ownEvents.forEach((event) => {
+            const option = document.createElement('option');
+            option.value = event.id;
+            option.textContent = event.meta?.name || 'Untitled Event';
+            ownOptGroup.appendChild(option);
+        });
+        eventSelect.appendChild(ownOptGroup);
+
+        // Render shared events
+        const sharedOptGroup = document.createElement('optgroup');
+        sharedOptGroup.label = 'Shared With Me';
+        Object.keys(sharedEventOwners).forEach((key) => {
+            const shared = sharedEventOwners[key];
+            const alreadyOwn = ownEvents.some(e => e.id === shared.eventId);
+            if (!alreadyOwn) {
+                const option = document.createElement('option');
+                option.value = `shared_${shared.ownerUid}_${shared.eventId}`;
+                option.textContent = `${shared.eventName} (by ${shared.ownerName})`;
+                sharedOptGroup.appendChild(option);
+            }
+        });
+        if (sharedOptGroup.children.length > 0) {
+            eventSelect.appendChild(sharedOptGroup);
+        }
+    } else {
+        ownEvents.forEach((event) => {
+            const option = document.createElement('option');
+            option.value = event.id;
+            option.textContent = event.meta?.name || 'Untitled Event';
+            eventSelect.appendChild(option);
+        });
+    }
 }
 
 function updateEventHeader(meta) {
@@ -374,13 +446,14 @@ function updateEventHeader(meta) {
     }
     const date = meta.date ? new Date(meta.date).toLocaleDateString() : '';
     const venue = meta.venue || '';
+    const sharedLabel = meta.isShared ? ' (Shared)' : '';
     const parts = [date, venue].filter(Boolean).join(' • ');
-    titleEl.textContent = meta.name || 'InviteePro';
-    subtitleEl.textContent = parts || 'Manage invitees for this event.';
+    titleEl.textContent = (meta.name || 'InviteePro') + sharedLabel;
+    subtitleEl.textContent = parts || (meta.isShared ? 'Collaborating on this event' : 'Manage invitees for this event.');
 
     // Update current event name in settings sheet
     if (currentEventNameEl) {
-        currentEventNameEl.textContent = meta.name || 'No event selected';
+        currentEventNameEl.textContent = (meta.name || 'No event selected') + sharedLabel;
     }
 }
 
@@ -469,8 +542,10 @@ function saveEventMeta() {
 }
 
 function loadEventsAndRestoreSelection() {
-    const storedEventId = localStorage.getItem(getEventStorageKey());
     eventsRef.on('value', (snap) => {
+        // Read stored event ID inside the callback so it gets the latest value
+        const storedSelection = localStorage.getItem(getEventStorageKey());
+
         const events = [];
         if (snap.exists()) {
             snap.forEach((child) => {
@@ -483,7 +558,23 @@ function loadEventsAndRestoreSelection() {
 
         renderEventOptions(events);
 
-        if (events.length === 0) {
+        // If we have a shared event selected, keep it
+        if (currentEventMeta?.isShared && currentEventId) {
+            return;
+        }
+
+        // Check if stored selection is a shared event
+        if (storedSelection && storedSelection.startsWith('shared_') && events.length >= 0) {
+            const parts = storedSelection.split('_');
+            const ownerUid = parts[1];
+            const eventId = parts.slice(2).join('_');
+            if (!currentEventId || currentEventId !== eventId) {
+                selectSharedEvent(ownerUid, eventId);
+            }
+            return;
+        }
+
+        if (events.length === 0 && Object.keys(sharedEventOwners).length === 0) {
             currentEventId = null;
             currentEventMeta = null;
             guests = [];
@@ -495,10 +586,28 @@ function loadEventsAndRestoreSelection() {
             return;
         }
 
-        const targetId = events.find((ev) => ev.id === storedEventId)?.id || events[0].id;
+        if (events.length === 0) {
+            // No own events but might have shared events - don't auto-select
+            updateEventHeader(null);
+            return;
+        }
+
+        // If we already have a current event selected, keep it (unless it no longer exists)
+        const currentEventExists = events.find((ev) => ev.id === currentEventId);
+        if (currentEventId && currentEventExists) {
+            currentEventMeta = currentEventExists.meta;
+            updateEventHeader(currentEventMeta);
+            const eventSelect = document.getElementById('eventSelect');
+            if (eventSelect) eventSelect.value = currentEventId;
+            return;
+        }
+
+        // Otherwise, try to restore from localStorage or pick the first event
+        const targetId = events.find((ev) => ev.id === storedSelection)?.id || events[0].id;
         const targetMeta = events.find((ev) => ev.id === targetId)?.meta || null;
         const eventSelect = document.getElementById('eventSelect');
         if (eventSelect) eventSelect.value = targetId;
+
         if (targetId !== currentEventId) {
             selectEvent(targetId, targetMeta);
         } else if (targetMeta) {
@@ -512,6 +621,8 @@ async function selectEvent(eventId, meta) {
     if (!eventId || !currentUserId) return;
     const previousEventId = currentEventId;
     currentEventId = eventId;
+
+    // Fetch meta if not provided
     if (!meta && eventsRef) {
         try {
             const snap = await eventsRef.child(`${eventId}/meta`).get();
@@ -522,7 +633,11 @@ async function selectEvent(eventId, meta) {
     }
     currentEventMeta = meta || {};
     currentEventName = currentEventMeta?.name || null;
+
+    // Save to localStorage immediately
     localStorage.setItem(getEventStorageKey(), eventId);
+
+    // Update UI
     updateEventHeader(currentEventMeta);
 
     const eventSelect = document.getElementById('eventSelect');
@@ -552,11 +667,27 @@ async function selectEvent(eventId, meta) {
 
     loadGuestsFromLocal();
     loadHostsFromLocal();
+    // Sync dropdown
+    const eventSelect = document.getElementById('eventSelect');
+    if (eventSelect) eventSelect.value = eventId;
+
+    // Set up new event-specific Firebase references
+    guestsRef = database.ref(`users/${currentUserId}/events/${eventId}/guests`);
+    hostsRef = database.ref(`users/${currentUserId}/events/${eventId}/hosts`);
+
+    // Reset filters and clear current data
+    resetEventFilters();
+    guests = [];
+    hosts = [];
     renderGuestTable();
     renderHostDropdowns();
     updateDashboard();
 
+    // Attach new listeners for this event's data
     guestsRef.on('value', (snap) => {
+        // Guard: only process if this ref still matches current event
+        if (currentEventId !== eventId) return;
+
         const data = [];
         if (snap.exists()) {
             snap.forEach((child) => {
@@ -570,6 +701,9 @@ async function selectEvent(eventId, meta) {
     });
 
     hostsRef.on('value', (snap) => {
+        // Guard: only process if this ref still matches current event
+        if (currentEventId !== eventId) return;
+
         const data = [];
         if (snap.exists()) {
             snap.forEach((child) => {
@@ -581,6 +715,8 @@ async function selectEvent(eventId, meta) {
         renderHostDropdowns();
         renderHostList();
     });
+
+    console.log('[App] Switched to event:', eventId, currentEventMeta?.name || '');
 }
 
 function escapeHtml(text) {
@@ -710,13 +846,19 @@ function renderHostList() {
 
     hostListDiv.innerHTML = hosts.map(host => {
         const guestCount = guests.filter(g => g.relativeOf === host.name).length;
-        const emailBadge = host.email ? `<span class="host-email-badge" title="${escapeHtml(host.email)}">&#9993; Co-host</span>` : '';
+        const emailBadge = host.email ? `<span class="host-email-badge" title="${escapeHtml(host.email)}">&#9993; ${escapeHtml(host.email)}</span>` : '';
+        const mobileBadge = host.mobile ? `<span class="host-mobile-badge" title="${escapeHtml(host.mobile)}">&#128222; ${escapeHtml(host.mobile)}</span>` : '';
+        const collabBadge = host.collaborate && host.email ? `<span class="host-collab-badge">&#128274; Collaborator</span>` : '';
         return `
             <div class="host-item">
-                <div>
+                <div class="host-item-info">
                     <span class="host-item-name">${escapeHtml(host.name)}</span>
-                    ${emailBadge}
-                    <span class="host-item-count">(${guestCount} guests)</span>
+                    <div class="host-item-badges">
+                        ${emailBadge}
+                        ${mobileBadge}
+                        ${collabBadge}
+                    </div>
+                    <span class="host-item-count">${guestCount} guest${guestCount !== 1 ? 's' : ''} linked</span>
                 </div>
                 <div class="host-item-actions">
                     <button class="btn btn-small btn-outline" onclick="openEditHostModal('${host.firebaseKey}')" title="Edit host">✏️</button>
@@ -789,15 +931,32 @@ function saveHostEdits(event) {
 }
 
 function openHostModal() {
+    if (!currentEventId) {
+        showToast('Please select or create an event first', 'error');
+        return;
+    }
     renderHostList();
     openModal('hostModal');
 }
 
 function addHost() {
+    if (!currentEventId) {
+        showToast('Please select or create an event first', 'error');
+        return;
+    }
+    if (!hostsRef) {
+        showToast('No event selected. Please select an event first.', 'error');
+        return;
+    }
+
     const nameInput = document.getElementById('newHostName');
     const emailInput = document.getElementById('newHostEmail');
+    const mobileInput = document.getElementById('newHostMobile');
+    const collaborateInput = document.getElementById('newHostCollaborate');
     const name = nameInput.value.trim();
     const email = emailInput ? emailInput.value.trim() : '';
+    const mobile = mobileInput ? mobileInput.value.trim() : '';
+    const collaborate = collaborateInput ? collaborateInput.checked : false;
 
     if (!name) {
         showToast('Please enter a host name', 'error');
@@ -810,9 +969,23 @@ function addHost() {
         return;
     }
 
+    // Validate email if collaboration is enabled
+    if (collaborate && !email) {
+        showToast('Email is required for collaboration access', 'error');
+        return;
+    }
+
+    // Validate mobile if provided
+    if (mobile && !/^\d{10}$/.test(mobile)) {
+        showToast('Please enter a valid 10-digit mobile number', 'error');
+        return;
+    }
+
     const hostData = {
         name: name,
         email: email || '',
+        mobile: mobile || '',
+        collaborate: collaborate || false,
         createdAt: new Date().toISOString()
     };
 
@@ -822,10 +995,18 @@ function addHost() {
             triggerHaptic();
             nameInput.value = '';
             if (emailInput) emailInput.value = '';
+            if (mobileInput) mobileInput.value = '';
+            if (collaborateInput) collaborateInput.checked = false;
+            toggleCollaborateHint();
+
+            // If collaboration enabled, share event and send email invite
+            if (collaborate && email) {
+                shareEventWithCoHost(email, name);
+                sendCollaborationEmail(email, name);
+            }
         })
         .catch((error) => {
             console.error('Firebase host add error:', error);
-            // Fallback: save locally
             hosts.push({ ...hostData, id: generateId() });
             localStorage.setItem(getHostsStorageKey(), JSON.stringify(hosts));
             renderHostDropdowns();
@@ -833,6 +1014,8 @@ function addHost() {
             showToast('Host added locally', 'success');
             nameInput.value = '';
             if (emailInput) emailInput.value = '';
+            if (mobileInput) mobileInput.value = '';
+            if (collaborateInput) collaborateInput.checked = false;
         });
 }
 
@@ -862,6 +1045,11 @@ function openAddHostInline() {
 }
 
 function addHostInline() {
+    if (!currentEventId || !hostsRef) {
+        showToast('Please select or create an event first', 'error');
+        return;
+    }
+
     const nameInput = document.getElementById('inlineHostName');
     const emailInput = document.getElementById('inlineHostEmail');
     const name = nameInput.value.trim();
@@ -880,6 +1068,7 @@ function addHostInline() {
     const hostData = {
         name: name,
         email: email || '',
+        collaborate: false,
         createdAt: new Date().toISOString()
     };
 
@@ -903,6 +1092,324 @@ function addHostInline() {
                 document.getElementById('relativeOf').value = name;
             }, 100);
             showToast('Host added locally', 'success');
+        });
+}
+
+// ==================== HOST COLLABORATION ====================
+
+function toggleCollaborateHint() {
+    const checkbox = document.getElementById('newHostCollaborate');
+    const hint = document.getElementById('collaborateHint');
+    const emailInput = document.getElementById('newHostEmail');
+    if (hint) {
+        hint.style.display = checkbox && checkbox.checked ? 'block' : 'none';
+    }
+    if (emailInput && checkbox) {
+        emailInput.required = checkbox.checked;
+        if (checkbox.checked) {
+            emailInput.placeholder = 'Email (required for collaboration)';
+            emailInput.focus();
+        } else {
+            emailInput.placeholder = 'Email (for co-host collaboration)';
+        }
+    }
+}
+
+function emailToKey(email) {
+    // Firebase keys can't contain . # $ [ ] /
+    return email.toLowerCase().replace(/\./g, ',').replace(/[#$\[\]\/]/g, '_');
+}
+
+// Share an event with a co-host by email
+function shareEventWithCoHost(email, hostName) {
+    if (!email || !currentEventId || !currentUserId) return;
+
+    const emailKey = emailToKey(email);
+
+    // Determine the actual owner - if this is already a shared event, use the original owner
+    const ownerUid = currentEventMeta?.ownerUid || currentUserId;
+
+    const shareData = {
+        eventId: currentEventId,
+        eventName: currentEventMeta?.name?.replace(' (Shared)', '') || 'Untitled Event',
+        ownerUid: ownerUid,
+        ownerName: currentUser?.displayName || currentUser?.email || 'Unknown',
+        hostName: hostName,
+        sharedAt: new Date().toISOString(),
+        email: email
+    };
+
+    // Write to shared-events/{emailKey} so the co-host can discover it on login
+    database.ref(`shared-events/${emailKey}/${ownerUid}_${currentEventId}`).set(shareData)
+        .then(() => {
+            // Also record collaborators in the event itself
+            database.ref(`users/${ownerUid}/events/${currentEventId}/collaborators/${emailKey}`).set({
+                email: email,
+                hostName: hostName,
+                sharedAt: new Date().toISOString()
+            });
+            showToast(`Collaboration access granted to ${email}`, 'success');
+        })
+        .catch((error) => {
+            console.error('Failed to share event:', error);
+            showToast('Failed to grant collaboration access', 'error');
+        });
+}
+
+// Load events shared with the current user (by their email)
+function loadSharedEvents() {
+    if (!currentUser || !currentUser.email) {
+        sharedEventsLoaded = true;
+        return;
+    }
+
+    const emailKey = emailToKey(currentUser.email);
+    const sharedRef = database.ref(`shared-events/${emailKey}`);
+
+    sharedRef.on('value', (snap) => {
+        sharedEventOwners = {};
+
+        if (snap.exists()) {
+            snap.forEach((child) => {
+                const data = child.val();
+                // Don't list events the user owns themselves
+                if (data.ownerUid !== currentUserId) {
+                    const key = `${data.ownerUid}_${data.eventId}`;
+                    sharedEventOwners[key] = data;
+                }
+            });
+        }
+
+        sharedEventsLoaded = true;
+
+        // Re-render the event dropdown to include shared events
+        if (eventsRef) {
+            eventsRef.once('value').then((evSnap) => {
+                const ownEvents = [];
+                if (evSnap.exists()) {
+                    evSnap.forEach((child) => {
+                        ownEvents.push({
+                            id: child.key,
+                            meta: child.child('meta').val() || {}
+                        });
+                    });
+                }
+                renderEventOptions(ownEvents);
+
+                // Sync dropdown to current selection
+                const eventSelect = document.getElementById('eventSelect');
+                if (eventSelect && currentEventId) {
+                    if (currentEventMeta?.ownerUid && currentEventMeta.ownerUid !== currentUserId) {
+                        eventSelect.value = `shared_${currentEventMeta.ownerUid}_${currentEventId}`;
+                    } else {
+                        eventSelect.value = currentEventId;
+                    }
+                }
+            });
+        }
+
+        // Show shared events banner for easy access
+        renderSharedEventsBanner();
+
+        // Register co-host UID with each shared event owner's data
+        registerCoHostUid();
+    });
+}
+
+// Register the co-host's UID with the event owner's data so Firebase rules can authorize
+function registerCoHostUid() {
+    if (!currentUserId || !currentUser?.email) return;
+
+    Object.keys(sharedEventOwners).forEach((key) => {
+        const shared = sharedEventOwners[key];
+        const emailKey = emailToKey(currentUser.email);
+        database.ref(`users/${shared.ownerUid}/events/${shared.eventId}/collaborators/${emailKey}/uid`)
+            .set(currentUserId)
+            .catch(() => {
+                // Ignore - might not have write permission yet
+            });
+    });
+}
+
+// Show a banner listing shared events
+function renderSharedEventsBanner() {
+    const keys = Object.keys(sharedEventOwners);
+    let banner = document.getElementById('sharedEventsBanner');
+
+    if (keys.length === 0) {
+        if (banner) banner.style.display = 'none';
+        return;
+    }
+
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'sharedEventsBanner';
+        banner.className = 'shared-events-banner';
+        const container = document.querySelector('.container');
+        const dashboard = document.querySelector('.dashboard');
+        if (container && dashboard) {
+            container.insertBefore(banner, dashboard);
+        }
+    }
+
+    banner.innerHTML = `
+        <div class="shared-banner-header">
+            <span class="shared-banner-icon">&#129309;</span>
+            <strong>Shared With You</strong>
+            <span class="shared-banner-count">${keys.length} event(s)</span>
+        </div>
+        <div class="shared-banner-list">
+            ${keys.map(key => {
+                const ev = sharedEventOwners[key];
+                const isActive = currentEventId === ev.eventId && currentEventMeta?.ownerUid === ev.ownerUid;
+                return `
+                    <div class="shared-event-item ${isActive ? 'active' : ''}" onclick="selectSharedEvent('${escapeHtml(ev.ownerUid)}', '${escapeHtml(ev.eventId)}')">
+                        <div class="shared-event-info">
+                            <span class="shared-event-name">${escapeHtml(ev.eventName)}</span>
+                            <span class="shared-event-owner">by ${escapeHtml(ev.ownerName)}</span>
+                        </div>
+                        <span class="shared-event-arrow">${isActive ? '&#10003;' : '&#8250;'}</span>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+    banner.style.display = 'block';
+}
+
+// Select a shared event - points refs to the OWNER's Firebase path for real-time sync
+async function selectSharedEvent(ownerUid, eventId) {
+    if (!ownerUid || !eventId || !currentUserId) return;
+
+    // Detach old listeners first
+    if (guestsRef) { guestsRef.off(); guestsRef = null; }
+    if (hostsRef) { hostsRef.off(); hostsRef = null; }
+
+    currentEventId = eventId;
+
+    // Fetch the event meta from the owner's data
+    let meta = null;
+    try {
+        const snap = await database.ref(`users/${ownerUid}/events/${eventId}/meta`).get();
+        meta = snap.exists() ? snap.val() : null;
+    } catch (e) {
+        console.error('Failed to load shared event meta:', e);
+    }
+
+    currentEventMeta = meta || {};
+    currentEventMeta.ownerUid = ownerUid; // Track that this is a shared event
+    currentEventMeta.isShared = true;
+    currentEventName = currentEventMeta?.name || 'Shared Event';
+
+    // Save selection
+    localStorage.setItem(getEventStorageKey(), `shared_${ownerUid}_${eventId}`);
+
+    updateEventHeader(currentEventMeta);
+
+    // Sync dropdown
+    const eventSelect = document.getElementById('eventSelect');
+    if (eventSelect) eventSelect.value = `shared_${ownerUid}_${eventId}`;
+
+    // Point refs to the OWNER's event data - this is the key for real-time sync
+    // Both the owner and co-host read/write to the same Firebase path
+    guestsRef = database.ref(`users/${ownerUid}/events/${eventId}/guests`);
+    hostsRef = database.ref(`users/${ownerUid}/events/${eventId}/hosts`);
+
+    // Reset filters and clear data
+    resetEventFilters();
+    guests = [];
+    hosts = [];
+    renderGuestTable();
+    renderHostDropdowns();
+    updateDashboard();
+
+    // Attach real-time listeners - same data as the owner sees
+    guestsRef.on('value', (snap) => {
+        if (currentEventId !== eventId) return;
+        const data = [];
+        if (snap.exists()) {
+            snap.forEach((child) => {
+                data.push({ ...child.val(), firebaseKey: child.key });
+            });
+        }
+        guests = data;
+        renderGuestTable();
+        updateDashboard();
+    });
+
+    hostsRef.on('value', (snap) => {
+        if (currentEventId !== eventId) return;
+        const data = [];
+        if (snap.exists()) {
+            snap.forEach((child) => {
+                data.push({ ...child.val(), firebaseKey: child.key });
+            });
+        }
+        hosts = data;
+        renderHostDropdowns();
+        renderHostList();
+    });
+
+    // Update banner active state
+    renderSharedEventsBanner();
+
+    triggerHaptic('medium');
+    showToast(`Opened shared event: ${currentEventName}`, 'success');
+    console.log('[App] Opened shared event:', eventId, 'Owner:', ownerUid);
+}
+
+// Check if co-host can actually read the shared data (test Firebase rules)
+function verifySharedAccess(ownerUid, eventId) {
+    return database.ref(`users/${ownerUid}/events/${eventId}/meta`).get()
+        .then((snap) => {
+            if (snap.exists()) {
+                return true;
+            }
+            return false;
+        })
+        .catch((error) => {
+            console.warn('[App] Cannot access shared event. Firebase rules may need updating.', error.code);
+            showToast('Cannot access shared event. The event owner may need to update sharing permissions.', 'error');
+            return false;
+        });
+}
+
+function sendCollaborationEmail(email, hostName) {
+    if (!email) return;
+
+    const eventName = currentEventMeta?.name || 'an event';
+    const ownerName = currentUser?.displayName || currentUser?.email || 'Someone';
+    const appUrl = window.location.href.split('?')[0];
+
+    const subject = encodeURIComponent(`You're invited to collaborate on "${eventName}" - InviteePro`);
+    const body = encodeURIComponent(
+        `Hi ${hostName},\n\n` +
+        `${ownerName} has invited you to collaborate on the guest list for "${eventName}" using InviteePro.\n\n` +
+        `You can add, edit, and manage the guest list together as a family.\n\n` +
+        `To get started:\n` +
+        `1. Open InviteePro: ${appUrl}\n` +
+        `2. Sign in or create an account using this email: ${email}\n` +
+        `3. The shared event will appear automatically in your dashboard\n\n` +
+        `Happy planning!\n${ownerName}`
+    );
+
+    // Open default email client
+    window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+    showToast(`Email invitation opened for ${email}`, 'success');
+}
+
+function grantCollabAccess(firebaseKey, email, hostName) {
+    if (!email || !firebaseKey || !hostsRef) return;
+
+    if (!confirm(`Grant collaboration access to ${email} for this event?`)) return;
+
+    hostsRef.child(firebaseKey).update({ collaborate: true })
+        .then(() => {
+            shareEventWithCoHost(email, hostName);
+        })
+        .catch((error) => {
+            console.error('Failed to update host:', error);
+            showToast('Failed to grant access', 'error');
         });
 }
 
@@ -930,11 +1437,19 @@ function generateId() {
 
 // Modal Operations
 function openAddModal() {
+    if (!currentEventId) {
+        showToast('Please select or create an event first', 'error');
+        return;
+    }
     document.getElementById('modalTitle').textContent = 'Add New Guest';
     document.getElementById('guestForm').reset();
     document.getElementById('guestId').value = '';
     document.getElementById('giftDescGroup').style.display = 'none';
-    document.getElementById('foodPref').value = 'Regular'; // Default
+    // Reset food split to defaults
+    document.getElementById('foodRegular').value = 1;
+    document.getElementById('foodSwaminarayan').value = 0;
+    document.getElementById('foodJain').value = 0;
+    updateFoodSplitDisplay();
     renderHostDropdowns();
     renderStatusTimeline(null);
     openModal('guestModal');
@@ -951,7 +1466,7 @@ function openEditModal(id) {
     document.getElementById('relativeOf').value = guest.relativeOf || '';
     document.getElementById('members').value = guest.members;
     document.getElementById('whatsapp').value = guest.whatsapp;
-    document.getElementById('foodPref').value = guest.foodPref || 'Regular';
+    setFoodSplitFromGuest(guest);
     document.getElementById('rsvpStatus').value = guest.rsvpStatus;
     const callDoneEl = document.getElementById('callDone');
     if (callDoneEl) callDoneEl.checked = guest.callDone || false;
@@ -988,11 +1503,141 @@ function toggleGiftDescription() {
     document.getElementById('giftDescGroup').style.display = giftGiven ? 'block' : 'none';
 }
 
+// ==================== FOOD SPLIT ====================
+
+function updateFoodSplit() {
+    const members = parseInt(document.getElementById('members').value) || 1;
+    const regular = parseInt(document.getElementById('foodRegular').value) || 0;
+    const swaminarayan = parseInt(document.getElementById('foodSwaminarayan').value) || 0;
+    const jain = parseInt(document.getElementById('foodJain').value) || 0;
+    const total = regular + swaminarayan + jain;
+
+    // If total doesn't match members, adjust Regular to fill the gap
+    if (total !== members) {
+        const diff = members - (swaminarayan + jain);
+        document.getElementById('foodRegular').value = Math.max(0, diff);
+    }
+
+    updateFoodSplitDisplay();
+}
+
+function adjustFoodSplit(changedType) {
+    const members = parseInt(document.getElementById('members').value) || 1;
+    let regular = parseInt(document.getElementById('foodRegular').value) || 0;
+    let swaminarayan = parseInt(document.getElementById('foodSwaminarayan').value) || 0;
+    let jain = parseInt(document.getElementById('foodJain').value) || 0;
+
+    const total = regular + swaminarayan + jain;
+
+    if (total > members) {
+        // Reduce other fields to fit
+        if (changedType === 'Regular') {
+            const remaining = members - regular;
+            if (swaminarayan + jain > remaining) {
+                const ratio = remaining / (swaminarayan + jain || 1);
+                swaminarayan = Math.floor(swaminarayan * ratio);
+                jain = remaining - swaminarayan;
+            }
+        } else if (changedType === 'Swaminarayan') {
+            const remaining = members - swaminarayan;
+            if (regular + jain > remaining) {
+                jain = Math.min(jain, remaining);
+                regular = remaining - jain;
+            }
+        } else if (changedType === 'Jain') {
+            const remaining = members - jain;
+            if (regular + swaminarayan > remaining) {
+                swaminarayan = Math.min(swaminarayan, remaining);
+                regular = remaining - swaminarayan;
+            }
+        }
+        document.getElementById('foodRegular').value = Math.max(0, regular);
+        document.getElementById('foodSwaminarayan').value = Math.max(0, swaminarayan);
+        document.getElementById('foodJain').value = Math.max(0, jain);
+    } else if (total < members) {
+        // Auto-fill remaining into Regular
+        regular = members - swaminarayan - jain;
+        document.getElementById('foodRegular').value = Math.max(0, regular);
+    }
+
+    updateFoodSplitDisplay();
+}
+
+function updateFoodSplitDisplay() {
+    const members = parseInt(document.getElementById('members').value) || 1;
+    const regular = parseInt(document.getElementById('foodRegular').value) || 0;
+    const swaminarayan = parseInt(document.getElementById('foodSwaminarayan').value) || 0;
+    const jain = parseInt(document.getElementById('foodJain').value) || 0;
+    const total = regular + swaminarayan + jain;
+
+    document.getElementById('foodSplitSum').textContent = total;
+    document.getElementById('foodSplitMembers').textContent = members;
+
+    const totalEl = document.getElementById('foodSplitTotal');
+    if (totalEl) {
+        totalEl.classList.toggle('mismatch', total !== members);
+        totalEl.classList.toggle('match', total === members);
+    }
+}
+
+function getFoodSplitData() {
+    return {
+        regular: parseInt(document.getElementById('foodRegular').value) || 0,
+        swaminarayan: parseInt(document.getElementById('foodSwaminarayan').value) || 0,
+        jain: parseInt(document.getElementById('foodJain').value) || 0
+    };
+}
+
+function setFoodSplitFromGuest(guest) {
+    const members = guest.members || 1;
+    if (guest.foodSplit) {
+        document.getElementById('foodRegular').value = guest.foodSplit.regular || 0;
+        document.getElementById('foodSwaminarayan').value = guest.foodSplit.swaminarayan || 0;
+        document.getElementById('foodJain').value = guest.foodSplit.jain || 0;
+    } else {
+        // Backward compatibility: convert old single foodPref to split
+        const pref = guest.foodPref || 'Regular';
+        document.getElementById('foodRegular').value = pref === 'Regular' ? members : 0;
+        document.getElementById('foodSwaminarayan').value = pref === 'Swaminarayan' ? members : 0;
+        document.getElementById('foodJain').value = pref === 'Jain' ? members : 0;
+    }
+    updateFoodSplitDisplay();
+}
+
+function getFoodPrefLabel(guest) {
+    if (guest.foodSplit) {
+        const parts = [];
+        if (guest.foodSplit.regular > 0) parts.push(`${guest.foodSplit.regular}R`);
+        if (guest.foodSplit.swaminarayan > 0) parts.push(`${guest.foodSplit.swaminarayan}S`);
+        if (guest.foodSplit.jain > 0) parts.push(`${guest.foodSplit.jain}J`);
+        return parts.join(' + ') || 'Regular';
+    }
+    return guest.foodPref || 'Regular';
+}
+
+function getFoodPrefBadgeClass(guest) {
+    if (guest.foodSplit) {
+        const { regular, swaminarayan, jain } = guest.foodSplit;
+        if (swaminarayan === 0 && jain === 0) return 'regular';
+        if (regular === 0 && jain === 0) return 'swaminarayan';
+        if (regular === 0 && swaminarayan === 0) return 'jain';
+        return 'mixed';
+    }
+    return (guest.foodPref || 'Regular').toLowerCase();
+}
+
 function saveGuest(event) {
     event.preventDefault();
 
     const id = document.getElementById('guestId').value;
     const existingGuest = id ? guests.find(g => g.id === id) : null;
+
+    const foodSplit = getFoodSplitData();
+    // Determine primary food pref for backward compatibility and filtering
+    let primaryFoodPref = 'Regular';
+    if (foodSplit.swaminarayan > foodSplit.regular && foodSplit.swaminarayan >= foodSplit.jain) primaryFoodPref = 'Swaminarayan';
+    else if (foodSplit.jain > foodSplit.regular && foodSplit.jain > foodSplit.swaminarayan) primaryFoodPref = 'Jain';
+    if (foodSplit.regular > 0 && (foodSplit.swaminarayan > 0 || foodSplit.jain > 0)) primaryFoodPref = 'Mixed';
 
     const callDoneEl = document.getElementById('callDone');
     const guestData = {
@@ -1002,7 +1647,8 @@ function saveGuest(event) {
         relativeOf: document.getElementById('relativeOf').value,
         members: parseInt(document.getElementById('members').value) || 1,
         whatsapp: document.getElementById('whatsapp').value.trim(),
-        foodPref: document.getElementById('foodPref').value || 'Regular',
+        foodPref: primaryFoodPref,
+        foodSplit: foodSplit,
         rsvpStatus: document.getElementById('rsvpStatus').value,
         callDone: callDoneEl ? callDoneEl.checked : (existingGuest?.callDone || false),
         giftGiven: document.getElementById('giftGiven').checked,
@@ -1133,7 +1779,7 @@ function renderGuestTable() {
             <td>
                 <a href="javascript:void(0)" class="whatsapp-btn" onclick="sendWhatsappInvite('${guest.whatsapp}','${(guest.firstName||'').replace(/'/g,"\\'")} ${ (guest.surname||'').replace(/'/g,"\\'") }'.trim())">&#128172; WhatsApp</a>
             </td>
-            <td><span class="badge badge-${(guest.foodPref || 'Regular').toLowerCase()}">${guest.foodPref || 'Regular'}</span></td>
+            <td><span class="badge badge-${getFoodPrefBadgeClass(guest)}">${getFoodPrefLabel(guest)}</span></td>
             <td><span class="badge badge-${guest.rsvpStatus.toLowerCase()}">${guest.rsvpStatus}</span></td>
             <td>
                 <button class="call-toggle-btn ${guest.callDone ? 'done' : ''}" onclick="toggleCallDone('${guest.id}')" title="${guest.callDone ? 'Called' : 'Mark as called'}">
@@ -1179,7 +1825,8 @@ function getFilteredGuests() {
             (guest.notes && guest.notes.toLowerCase().includes(searchTerm));
 
         const matchesRsvp = !rsvpFilter || guest.rsvpStatus === rsvpFilter;
-        const matchesFood = !foodFilter || guest.foodPref === foodFilter;
+        const matchesFood = !foodFilter || guest.foodPref === foodFilter ||
+            (guest.foodSplit && guest.foodSplit[foodFilter.toLowerCase()] > 0);
         const matchesHost = !hostFilter || guest.relativeOf === hostFilter;
 
         return matchesSearch && matchesRsvp && matchesFood && matchesHost;
@@ -1211,8 +1858,18 @@ function updateDashboard() {
         confirmed: guests.filter(g => g.rsvpStatus === 'Confirmed').length,
         pending: guests.filter(g => g.rsvpStatus === 'Pending').length,
         declined: guests.filter(g => g.rsvpStatus === 'Declined').length,
-        regular: guests.filter(g => (g.foodPref || 'Regular') === 'Regular').reduce((sum, g) => sum + g.members, 0),
-        swaminarayan: guests.filter(g => g.foodPref === 'Swaminarayan').reduce((sum, g) => sum + g.members, 0),
+        regular: guests.reduce((sum, g) => {
+            if (g.foodSplit) return sum + (g.foodSplit.regular || 0);
+            return sum + ((g.foodPref || 'Regular') === 'Regular' ? g.members : 0);
+        }, 0),
+        swaminarayan: guests.reduce((sum, g) => {
+            if (g.foodSplit) return sum + (g.foodSplit.swaminarayan || 0);
+            return sum + (g.foodPref === 'Swaminarayan' ? g.members : 0);
+        }, 0),
+        jain: guests.reduce((sum, g) => {
+            if (g.foodSplit) return sum + (g.foodSplit.jain || 0);
+            return sum + (g.foodPref === 'Jain' ? g.members : 0);
+        }, 0),
         gifts: guests.filter(g => g.giftGiven).length,
         callsDone: guests.filter(g => g.callDone).length,
         callsPending: guests.filter(g => !g.callDone).length
@@ -1225,6 +1882,8 @@ function updateDashboard() {
 
     document.getElementById('regularCount').textContent = stats.regular;
     document.getElementById('swaminarayanCount').textContent = stats.swaminarayan;
+    const jainCountEl = document.getElementById('jainCount');
+    if (jainCountEl) jainCountEl.textContent = stats.jain;
 
     document.getElementById('statusConfirmed').textContent = stats.confirmed;
     document.getElementById('statusPending').textContent = stats.pending;
@@ -1299,7 +1958,7 @@ function exportToExcel() {
         if (columns.relativeOf) row['Relative Of'] = guest.relativeOf || '-';
         if (columns.members) row['Members'] = guest.members;
         if (columns.whatsapp) row['WhatsApp'] = `+91 ${formatPhone(guest.whatsapp)}`;
-        if (columns.food) row['Food Preference'] = guest.foodPref || 'Regular';
+        if (columns.food) row['Food Preference'] = getFoodPrefLabel(guest);
         if (columns.rsvp) row['RSVP Status'] = guest.rsvpStatus;
         if (columns.gift) row['Gift'] = guest.giftGiven ? (guest.giftDescription || 'Yes') : 'No';
         if (columns.notes) row['Notes'] = guest.notes || '';
@@ -1373,7 +2032,7 @@ function exportToPDF() {
         if (columns.relativeOf) row.push(guest.relativeOf || '-');
         if (columns.members) row.push(guest.members);
         if (columns.whatsapp) row.push(`+91 ${guest.whatsapp}`);
-        if (columns.food) row.push(guest.foodPref || 'Regular');
+        if (columns.food) row.push(getFoodPrefLabel(guest));
         if (columns.rsvp) row.push(guest.rsvpStatus);
         if (columns.gift) row.push(guest.giftGiven ? (guest.giftDescription || 'Yes') : 'No');
         if (columns.notes) row.push(guest.notes || '-');
@@ -2261,7 +2920,6 @@ function renderEventListSheet() {
     const emptyState = document.getElementById('eventListEmpty');
     if (!container) return;
 
-    // Get events from Firebase listener cache
     if (!eventsRef) {
         container.innerHTML = '';
         if (emptyState) emptyState.style.display = 'block';
@@ -2269,17 +2927,20 @@ function renderEventListSheet() {
     }
 
     eventsRef.once('value').then((snap) => {
-        const events = [];
+        const ownEvents = [];
         if (snap.exists()) {
             snap.forEach((child) => {
-                events.push({
+                ownEvents.push({
                     id: child.key,
                     meta: child.child('meta').val() || {}
                 });
             });
         }
 
-        if (events.length === 0) {
+        const sharedKeys = Object.keys(sharedEventOwners);
+        const hasEvents = ownEvents.length > 0 || sharedKeys.length > 0;
+
+        if (!hasEvents) {
             container.innerHTML = '';
             if (emptyState) emptyState.style.display = 'block';
             return;
@@ -2287,49 +2948,80 @@ function renderEventListSheet() {
 
         if (emptyState) emptyState.style.display = 'none';
 
-        container.innerHTML = events.map(event => {
-            const meta = event.meta;
-            const isActive = event.id === currentEventId;
-            const dateStr = meta.date ? new Date(meta.date).toLocaleDateString() : '';
-            const venueStr = meta.venue || '';
-            const metaStr = [dateStr, venueStr].filter(Boolean).join(' • ') || 'No date set';
-            const stats = meta.stats || {};
+        let html = '';
 
-            return `
-                <div class="event-list-item ${isActive ? 'active' : ''}" onclick="selectEventFromSheet('${event.id}')">
-                    <div class="event-list-icon">&#127881;</div>
-                    <div class="event-list-info">
-                        <div class="event-list-name">${escapeHtml(meta.name || 'Untitled Event')}</div>
-                        <div class="event-list-meta">${escapeHtml(metaStr)}</div>
-                        <div class="event-list-stats">
-                            <span class="event-list-stat">&#128101; ${stats.totalFamilies || 0} families</span>
-                            <span class="event-list-stat">&#9989; ${stats.confirmed || 0} confirmed</span>
+        // Own events
+        if (ownEvents.length > 0) {
+            if (sharedKeys.length > 0) {
+                html += '<div style="padding:10px 20px;font-size:0.8rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;">My Events</div>';
+            }
+            html += ownEvents.map(event => {
+                const meta = event.meta;
+                const isActive = event.id === currentEventId && !currentEventMeta?.isShared;
+                const dateStr = meta.date ? new Date(meta.date).toLocaleDateString() : '';
+                const venueStr = meta.venue || '';
+                const metaStr = [dateStr, venueStr].filter(Boolean).join(' \u2022 ') || 'No date set';
+                const stats = meta.stats || {};
+
+                return `
+                    <div class="event-list-item ${isActive ? 'active' : ''}" onclick="selectEventFromSheet('${event.id}')">
+                        <div class="event-list-icon">&#127881;</div>
+                        <div class="event-list-info">
+                            <div class="event-list-name">${escapeHtml(meta.name || 'Untitled Event')}</div>
+                            <div class="event-list-meta">${escapeHtml(metaStr)}</div>
+                            <div class="event-list-stats">
+                                <span class="event-list-stat">&#128101; ${stats.totalFamilies || 0} families</span>
+                                <span class="event-list-stat">&#9989; ${stats.confirmed || 0} confirmed</span>
+                            </div>
                         </div>
+                        <span class="event-list-check">&#10003;</span>
                     </div>
-                    <span class="event-list-check">&#10003;</span>
-                </div>
-            `;
-        }).join('');
+                `;
+            }).join('');
+        }
+
+        // Shared events
+        if (sharedKeys.length > 0) {
+            html += '<div style="padding:10px 20px;font-size:0.8rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;">&#129309; Shared With Me</div>';
+            html += sharedKeys.map(key => {
+                const ev = sharedEventOwners[key];
+                const isActive = currentEventId === ev.eventId && currentEventMeta?.ownerUid === ev.ownerUid;
+
+                return `
+                    <div class="event-list-item ${isActive ? 'active' : ''}" onclick="selectSharedEventFromSheet('${escapeHtml(ev.ownerUid)}', '${escapeHtml(ev.eventId)}')">
+                        <div class="event-list-icon" style="background:linear-gradient(135deg,#10b981,#059669);">&#129309;</div>
+                        <div class="event-list-info">
+                            <div class="event-list-name">${escapeHtml(ev.eventName)}</div>
+                            <div class="event-list-meta">Shared by ${escapeHtml(ev.ownerName)}</div>
+                        </div>
+                        <span class="event-list-check">&#10003;</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        container.innerHTML = html;
     });
 }
 
 function selectEventFromSheet(eventId) {
     if (!eventId) return;
 
-    // Update dropdown
     const eventSelect = document.getElementById('eventSelect');
     if (eventSelect) eventSelect.value = eventId;
 
-    // Select the event
     selectEvent(eventId);
-
-    // Close the sheet
     closeBottomSheet('eventSelectorSheet');
 
     // Haptic feedback
     triggerHaptic('medium');
 
     showToast('Event switched!', 'success');
+}
+
+function selectSharedEventFromSheet(ownerUid, eventId) {
+    closeBottomSheet('eventSelectorSheet');
+    selectSharedEvent(ownerUid, eventId);
 }
 
 // ==================== TAB NAVIGATION ====================
