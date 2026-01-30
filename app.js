@@ -12,9 +12,15 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-firebase.initializeApp(firebaseConfig);
-const database = firebase.database();
-const auth = firebase.auth();
+let database = null;
+let auth = null;
+if (window.firebase && firebase.initializeApp) {
+    firebase.initializeApp(firebaseConfig);
+    database = firebase.database();
+    auth = firebase.auth();
+} else {
+    console.warn('Firebase SDK failed to load. Auth and sync features are disabled.');
+}
 
 let guestsRef = null;
 let hostsRef = null;
@@ -54,6 +60,11 @@ document.addEventListener('DOMContentLoaded', function() {
     setupOnlineStatusListeners();
     showSyncStatus();
     setupContactPicker();
+
+    if (!auth) {
+        showToast('Auth is unavailable. Check your connection or refresh.', 'error');
+        return;
+    }
 
     // Listen for auth state changes
     auth.onAuthStateChanged((user) => {
@@ -155,6 +166,10 @@ function toggleMobileMenu() {
 }
 
 function signInWithGoogle() {
+    if (!auth) {
+        showToast('Auth is unavailable right now. Please refresh and try again.', 'error');
+        return;
+    }
     const provider = new firebase.auth.GoogleAuthProvider();
     auth.signInWithPopup(provider)
         .then((result) => {
@@ -167,6 +182,10 @@ function signInWithGoogle() {
 }
 
 function signInWithEmail() {
+    if (!auth) {
+        showToast('Auth is unavailable right now. Please refresh and try again.', 'error');
+        return;
+    }
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
 
@@ -186,6 +205,10 @@ function signInWithEmail() {
 }
 
 function signUpWithEmail() {
+    if (!auth) {
+        showToast('Auth is unavailable right now. Please refresh and try again.', 'error');
+        return;
+    }
     const name = document.getElementById('signupName').value.trim();
     const email = document.getElementById('signupEmail').value.trim();
     const password = document.getElementById('signupPassword').value;
@@ -215,6 +238,10 @@ function signUpWithEmail() {
 }
 
 function signOutUser() {
+    if (!auth) {
+        showToast('Auth is unavailable right now.', 'error');
+        return;
+    }
     if (confirm('Are you sure you want to sign out?')) {
         auth.signOut()
             .then(() => {
@@ -593,18 +620,6 @@ function loadEventsAndRestoreSelection() {
 async function selectEvent(eventId, meta) {
     if (!eventId || !currentUserId) return;
     const previousEventId = currentEventId;
-
-    // Detach old listeners FIRST to prevent race conditions
-    if (guestsRef) {
-        guestsRef.off();
-        guestsRef = null;
-    }
-    if (hostsRef) {
-        hostsRef.off();
-        hostsRef = null;
-    }
-
-    // Now safe to update current event ID
     currentEventId = eventId;
 
     // Fetch meta if not provided
@@ -847,8 +862,6 @@ function renderHostList() {
                 </div>
                 <div class="host-item-actions">
                     <button class="btn btn-small btn-outline" onclick="openEditHostModal('${host.firebaseKey}')" title="Edit host">✏️</button>
-                    ${host.email && !host.collaborate ? `<button class="btn btn-small btn-outline" onclick="grantCollabAccess('${host.firebaseKey}', '${escapeHtml(host.email)}', '${escapeHtml(host.name)}')" title="Grant access">&#128274; Share</button>` : ''}
-                    ${host.collaborate && host.email ? `<button class="btn btn-small btn-outline" onclick="sendCollaborationEmail('${escapeHtml(host.email)}', '${escapeHtml(host.name)}')" title="Resend invite">&#9993; Resend</button>` : ''}
                     <button class="btn btn-small btn-danger" onclick="deleteHost('${host.firebaseKey}', '${escapeHtml(host.name)}')">Delete</button>
                 </div>
             </div>
