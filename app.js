@@ -428,6 +428,9 @@ function updateEventHeader(meta) {
     if (currentEventNameEl) {
         currentEventNameEl.textContent = (meta.name || 'No event selected') + sharedLabel;
     }
+
+    // Update co-host activity bar
+    updateCohostActivityBar();
 }
 
 function openEventModal() {
@@ -639,6 +642,7 @@ async function selectEvent(eventId, meta) {
     renderGuestTable();
     renderHostDropdowns();
     updateDashboard();
+    updateCohostActivityBar();
 
     // Attach new listeners for this event's data
     guestsRef.on('value', (snap) => {
@@ -818,9 +822,8 @@ function renderHostList() {
                     <span class="host-item-count">${guestCount} guest${guestCount !== 1 ? 's' : ''} linked</span>
                 </div>
                 <div class="host-item-actions">
-                    ${host.email && !host.collaborate ? `<button class="btn btn-small btn-outline" onclick="grantCollabAccess('${host.firebaseKey}', '${escapeHtml(host.email)}', '${escapeHtml(host.name)}')" title="Grant access">&#128274; Share</button>` : ''}
-                    ${host.collaborate && host.email ? `<button class="btn btn-small btn-outline" onclick="sendCollaborationEmail('${escapeHtml(host.email)}', '${escapeHtml(host.name)}')" title="Resend invite">&#9993; Resend</button>` : ''}
-                    <button class="btn btn-small btn-danger" onclick="deleteHost('${host.firebaseKey}', '${escapeHtml(host.name)}')">Delete</button>
+                    <button class="btn btn-small btn-outline host-edit-btn" onclick="openEditHostModal('${host.firebaseKey}')" title="Edit host">&#9998;</button>
+                    <button class="btn btn-small btn-danger" onclick="deleteHost('${host.firebaseKey}', '${escapeHtml(host.name)}')">&#128465;</button>
                 </div>
             </div>
         `;
@@ -1249,6 +1252,7 @@ async function selectSharedEvent(ownerUid, eventId) {
 
     // Update banner active state
     renderSharedEventsBanner();
+    updateCohostActivityBar();
 
     triggerHaptic('medium');
     showToast(`Opened shared event: ${currentEventName}`, 'success');
@@ -1308,6 +1312,126 @@ function grantCollabAccess(firebaseKey, email, hostName) {
             console.error('Failed to update host:', error);
             showToast('Failed to grant access', 'error');
         });
+}
+
+// ==================== EDIT HOST ====================
+
+function openEditHostModal(firebaseKey) {
+    const host = hosts.find(h => h.firebaseKey === firebaseKey);
+    if (!host) { showToast('Host not found', 'error'); return; }
+
+    document.getElementById('editHostKey').value = firebaseKey;
+    document.getElementById('editHostName').value = host.name || '';
+    document.getElementById('editHostEmail').value = host.email || '';
+    document.getElementById('editHostMobile').value = host.mobile || '';
+    const collabCheckbox = document.getElementById('editHostCollaborate');
+    collabCheckbox.checked = !!host.collaborate;
+    toggleEditCollabHint();
+    collabCheckbox.addEventListener('change', toggleEditCollabHint);
+    openModal('editHostModal');
+}
+
+function toggleEditCollabHint() {
+    const cb = document.getElementById('editHostCollaborate');
+    const hint = document.getElementById('editCollabHint');
+    if (hint) hint.style.display = cb && cb.checked ? 'block' : 'none';
+}
+
+function updateHost() {
+    const firebaseKey = document.getElementById('editHostKey').value;
+    if (!firebaseKey || !hostsRef) { showToast('Error: no host selected', 'error'); return; }
+
+    const name = document.getElementById('editHostName').value.trim();
+    const email = document.getElementById('editHostEmail').value.trim();
+    const mobile = document.getElementById('editHostMobile').value.trim();
+    const collaborate = document.getElementById('editHostCollaborate').checked;
+
+    if (!name) { showToast('Host name is required', 'error'); return; }
+    if (collaborate && !email) { showToast('Email is required for collaboration', 'error'); return; }
+    if (mobile && !/^\d{10}$/.test(mobile)) { showToast('Enter a valid 10-digit mobile number', 'error'); return; }
+
+    const oldHost = hosts.find(h => h.firebaseKey === firebaseKey);
+    const oldName = oldHost ? oldHost.name : '';
+    const wasCollaborating = oldHost ? !!oldHost.collaborate : false;
+
+    const updatedData = { name, email: email || '', mobile: mobile || '', collaborate };
+
+    hostsRef.child(firebaseKey).update(updatedData)
+        .then(() => {
+            // If host name changed, update all guests linked to old name
+            if (oldName && oldName !== name) {
+                guests.forEach(g => {
+                    if (g.relativeOf === oldName && g.firebaseKey && guestsRef) {
+                        guestsRef.child(g.firebaseKey).update({ relativeOf: name });
+                    }
+                });
+            }
+
+            // If collaboration was just enabled, share event and send email
+            if (collaborate && email && !wasCollaborating) {
+                shareEventWithCoHost(email, name);
+                sendCollaborationEmail(email, name);
+            }
+
+            // If collaboration was disabled, revoke sharing
+            if (!collaborate && wasCollaborating && oldHost?.email) {
+                revokeSharing(oldHost.email);
+            }
+
+            showToast('Host updated successfully', 'success');
+            closeModal('editHostModal');
+        })
+        .catch((error) => {
+            console.error('Failed to update host:', error);
+            showToast('Failed to update host', 'error');
+        });
+}
+
+function revokeSharing(email) {
+    if (!email || !currentEventId || !currentUserId) return;
+    const emailKey = emailToKey(email);
+    const ownerUid = currentEventMeta?.ownerUid || currentUserId;
+
+    // Remove from shared-events
+    database.ref(`shared-events/${emailKey}/${ownerUid}_${currentEventId}`).remove().catch(() => {});
+    // Remove from collaborators
+    database.ref(`users/${ownerUid}/events/${currentEventId}/collaborators/${emailKey}`).remove().catch(() => {});
+}
+
+// ==================== CO-HOST ACTIVITY ====================
+
+function updateCohostActivityBar() {
+    const bar = document.getElementById('cohostActivityBar');
+    const text = document.getElementById('cohostActivityText');
+    const badge = document.getElementById('cohostActivityBadge');
+    if (!bar) return;
+
+    if (currentEventMeta?.isShared) {
+        // This user is viewing a shared event
+        const ownerName = currentEventMeta.ownerName || sharedEventOwners[`${currentEventMeta.ownerUid}_${currentEventId}`]?.ownerName || 'Owner';
+        bar.style.display = 'flex';
+        text.textContent = `Shared by ${ownerName}`;
+        badge.textContent = 'Co-host';
+        badge.className = 'cohost-activity-badge badge-cohost';
+    } else if (currentEventId && currentUserId) {
+        // Check if this event has collaborators
+        const ownerUid = currentEventMeta?.ownerUid || currentUserId;
+        database.ref(`users/${ownerUid}/events/${currentEventId}/collaborators`).once('value', (snap) => {
+            if (snap.exists() && snap.numChildren() > 0) {
+                const collabs = [];
+                snap.forEach(c => { collabs.push(c.val().email || c.val().hostName || 'co-host'); });
+                bar.style.display = 'flex';
+                text.textContent = `Shared with ${collabs.length} co-host(s)`;
+                badge.textContent = 'Owner';
+                badge.className = 'cohost-activity-badge badge-owner';
+            } else {
+                bar.style.display = 'none';
+            }
+        });
+        return;
+    } else {
+        bar.style.display = 'none';
+    }
 }
 
 // ==================== GUEST MANAGEMENT ====================

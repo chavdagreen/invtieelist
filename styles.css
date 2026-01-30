@@ -3775,6 +3775,93 @@ form {
     font-weight: 600;
 }
 
+/* Edit host button */
+.host-edit-btn {
+    min-width: 32px;
+    padding: 4px 8px;
+    font-size: 1rem;
+}
+
+/* Toggle switch */
+.toggle-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    font-weight: 500;
+}
+.toggle-switch {
+    position: relative;
+    width: 48px;
+    height: 26px;
+    flex-shrink: 0;
+}
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: #ccc;
+    border-radius: 26px;
+    transition: background 0.3s;
+    cursor: pointer;
+}
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    bottom: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.3s;
+}
+.toggle-switch input:checked + .toggle-slider {
+    background: #7c3aed;
+}
+.toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(22px);
+}
+
+/* Co-host activity bar */
+.cohost-activity-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(16,185,129,0.08));
+    border: 1px solid rgba(124,58,237,0.15);
+    border-radius: 12px;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+}
+.cohost-activity-icon {
+    font-size: 1.2rem;
+}
+.cohost-activity-text {
+    flex: 1;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+.cohost-activity-badge {
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+.badge-cohost {
+    background: rgba(16,185,129,0.15);
+    color: #10b981;
+}
+.badge-owner {
+    background: rgba(124,58,237,0.15);
+    color: #7c3aed;
+}
+
 /* =========================
    EVENT LIST IN BOTTOM SHEET
    ========================= */

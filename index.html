@@ -414,6 +414,13 @@
                     </div>
                 </section>
 
+                <!-- Co-host Activity Indicator (shown for shared events) -->
+                <div class="cohost-activity-bar" id="cohostActivityBar" style="display:none;">
+                    <span class="cohost-activity-icon">&#129309;</span>
+                    <span class="cohost-activity-text" id="cohostActivityText">Shared event</span>
+                    <span class="cohost-activity-badge" id="cohostActivityBadge"></span>
+                </div>
+
                 <!-- Content Grid - Side panels -->
                 <section class="content-grid">
                     <!-- Left Side - Food Summary -->
@@ -945,6 +952,45 @@
                 <div class="form-actions">
                     <button class="btn btn-outline" onclick="closeModal('addHostInlineModal')">Cancel</button>
                     <button class="btn btn-primary" onclick="addHostInline()">Add Host</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Host Modal -->
+    <div class="modal" id="editHostModal">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>Edit Host</h2>
+                <button class="close-btn" onclick="closeModal('editHostModal')">&times;</button>
+            </div>
+            <div style="padding: 24px;">
+                <input type="hidden" id="editHostKey">
+                <div class="form-group">
+                    <label for="editHostName">Host Name *</label>
+                    <input type="text" id="editHostName" placeholder="Enter host name">
+                </div>
+                <div class="form-group">
+                    <label for="editHostEmail">Email (for collaboration)</label>
+                    <input type="email" id="editHostEmail" placeholder="Email ID">
+                </div>
+                <div class="form-group">
+                    <label for="editHostMobile">Mobile Number</label>
+                    <input type="tel" id="editHostMobile" placeholder="10-digit mobile" maxlength="10" pattern="[0-9]{10}">
+                </div>
+                <div class="form-group">
+                    <label class="toggle-label">
+                        <span>Share event (collaboration)</span>
+                        <div class="toggle-switch">
+                            <input type="checkbox" id="editHostCollaborate">
+                            <span class="toggle-slider"></span>
+                        </div>
+                    </label>
+                    <p class="helper-text" id="editCollabHint" style="display:none;">This co-host will be able to add, edit and delete guests in this event.</p>
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-outline" onclick="closeModal('editHostModal')">Cancel</button>
+                    <button class="btn btn-primary" onclick="updateHost()">Save Changes</button>
                 </div>
             </div>
         </div>
