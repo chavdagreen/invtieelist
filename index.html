@@ -433,6 +433,11 @@
                                     <div class="food-count" id="swaminarayanCount">0</div>
                                     <div class="food-label">Swaminarayan</div>
                                 </div>
+                                <div class="food-item">
+                                    <div class="food-icon">&#127807;</div>
+                                    <div class="food-count" id="jainCount">0</div>
+                                    <div class="food-label">Jain</div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -570,6 +575,7 @@
                             <option value="">All Food Preferences</option>
                             <option value="Regular">Regular</option>
                             <option value="Swaminarayan">Swaminarayan</option>
+                            <option value="Jain">Jain</option>
                         </select>
                         <select id="filterHost">
                             <option value="">All Hosts</option>
@@ -694,7 +700,7 @@
                     </div>
                     <div class="form-group">
                         <label for="members">Number of Family Members *</label>
-                        <input type="number" id="members" min="1" value="1" required>
+                        <input type="number" id="members" min="1" value="1" required onchange="updateFoodSplit()" oninput="updateFoodSplit()">
                     </div>
                 </div>
 
@@ -714,11 +720,24 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="foodPref">Food Preference</label>
-                        <select id="foodPref">
-                            <option value="Regular" selected>Regular</option>
-                            <option value="Swaminarayan">Swaminarayan</option>
-                        </select>
+                        <label>Food Preference (per member)</label>
+                        <div class="food-split-inputs" id="foodSplitInputs">
+                            <div class="food-split-row">
+                                <span class="food-split-label">&#127858; Regular</span>
+                                <input type="number" id="foodRegular" min="0" value="1" class="food-split-input" onchange="adjustFoodSplit('Regular')">
+                            </div>
+                            <div class="food-split-row">
+                                <span class="food-split-label">&#128591; Swaminarayan</span>
+                                <input type="number" id="foodSwaminarayan" min="0" value="0" class="food-split-input" onchange="adjustFoodSplit('Swaminarayan')">
+                            </div>
+                            <div class="food-split-row">
+                                <span class="food-split-label">&#127807; Jain</span>
+                                <input type="number" id="foodJain" min="0" value="0" class="food-split-input" onchange="adjustFoodSplit('Jain')">
+                            </div>
+                            <div class="food-split-total" id="foodSplitTotal">
+                                <span>Total: <strong id="foodSplitSum">1</strong> / <strong id="foodSplitMembers">1</strong></span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -777,8 +796,9 @@
                 <div class="add-host-section">
                     <h3>Add New Host</h3>
                     <div class="add-host-form">
-                        <input type="text" id="newHostName" placeholder="Enter host name (e.g., Vivek Chavda)">
-                        <input type="email" id="newHostEmail" placeholder="Email (for co-host collaboration)">
+                        <input type="text" id="newHostName" placeholder="Enter host name (e.g., Vivek Chavda)" required>
+                        <input type="email" id="newHostEmail" placeholder="Email ID (optional - for collaboration)">
+                        <input type="tel" id="newHostMobile" placeholder="Mobile number (optional)" maxlength="10" pattern="[0-9]{10}">
                         <div class="collaborate-toggle">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="newHostCollaborate" onchange="toggleCollaborateHint()">
@@ -786,12 +806,13 @@
                             </label>
                             <div class="collaborate-hint" id="collaborateHint" style="display:none;">
                                 <span class="collaborate-hint-icon">&#128274;</span>
-                                This co-host will be able to view and edit the guest list for this event using their own InviteePro account.
+                                This co-host will receive an email invitation and can add, edit or delete guests - just like you.
+                                All family members can participate in preparing the guest list together.
                             </div>
                         </div>
                         <button class="btn btn-primary" onclick="addHost()">Add Host</button>
                     </div>
-                    <p class="helper-text">Enter an email and check "Grant collaboration access" to let a co-host manage this event's guest list.</p>
+                    <p class="helper-text">Add family members as hosts. Enter their email to invite them as collaborators who can manage the guest list together.</p>
                 </div>
                 <hr>
                 <div class="host-list-section">

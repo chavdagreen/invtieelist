@@ -544,6 +544,24 @@ tbody tr:last-child td {
 }
 .badge-jain::before { background: #a855f7; }
 
+.badge-regular {
+    background: #dbeafe;
+    color: #2563eb;
+}
+.badge-regular::before { background: #3b82f6; }
+
+.badge-swaminarayan {
+    background: #fef3c7;
+    color: #d97706;
+}
+.badge-swaminarayan::before { background: #f59e0b; }
+
+.badge-mixed {
+    background: linear-gradient(135deg, #dbeafe, #fef3c7, #ede9fe);
+    color: #6d28d9;
+}
+.badge-mixed::before { background: linear-gradient(135deg, #3b82f6, #f59e0b, #a855f7); }
+
 /* WhatsApp Link */
 .whatsapp-link {
     color: #25d366;
@@ -2838,7 +2856,99 @@ form {
     border-radius: 20px;
     font-size: 0.7rem;
     font-weight: 600;
-    margin-left: 8px;
+}
+
+.host-mobile-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.host-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.host-item-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.host-item-count {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+/* =========================
+   FOOD SPLIT INPUTS
+   ========================= */
+
+.food-split-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--bg-color);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.food-split-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.food-split-label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    min-width: 120px;
+}
+
+.food-split-input {
+    width: 70px;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    text-align: center;
+    font-weight: 600;
+}
+
+.food-split-input:focus {
+    border-color: var(--primary-purple);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+}
+
+.food-split-total {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+
+.food-split-total.match {
+    color: #10b981;
+}
+
+.food-split-total.mismatch {
+    color: #ef4444;
+    font-weight: 600;
 }
 
 /* Template image indicator */
@@ -3631,6 +3741,25 @@ form {
 .shared-event-arrow {
     color: var(--text-muted);
     font-size: 1.2rem;
+}
+
+.shared-event-item.active {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+.shared-event-item.active .shared-event-arrow {
+    color: #10b981;
+}
+
+.shared-banner-count {
+    margin-left: auto;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--bg-color);
+    padding: 2px 10px;
+    border-radius: 10px;
 }
 
 /* Host list collaboration badge */
