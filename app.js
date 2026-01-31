@@ -521,6 +521,8 @@ function updateEventHeader(meta) {
 
     // Update co-host activity bar
     updateCohostActivityBar();
+    // Hide delete option for shared events
+    updateDeleteEventVisibility();
 }
 
 function openEventModal() {
@@ -605,6 +607,79 @@ function saveEventMeta() {
     }).catch(() => {
         showToast('Failed to create event (offline?)', 'error');
     });
+}
+
+function deleteCurrentEvent() {
+    if (!currentEventId || !currentUserId) {
+        showToast('No event selected to delete', 'error');
+        return;
+    }
+
+    // Co-hosts cannot delete shared events
+    if (currentEventMeta?.isShared || (currentEventMeta?.ownerUid && currentEventMeta.ownerUid !== currentUserId)) {
+        showToast('You cannot delete a shared event. Only the event owner can delete it.', 'error');
+        return;
+    }
+
+    const eventName = currentEventMeta?.name || 'this event';
+    if (!confirm(`Are you sure you want to delete "${eventName}"?\n\nThis will permanently remove the event, all guests, hosts, and shared access. This cannot be undone.`)) {
+        return;
+    }
+
+    // Second confirmation for safety
+    if (!confirm(`FINAL WARNING: All data for "${eventName}" will be lost forever. Continue?`)) {
+        return;
+    }
+
+    const eventId = currentEventId;
+
+    // Detach listeners
+    if (guestsRef) { guestsRef.off(); guestsRef = null; }
+    if (hostsRef) { hostsRef.off(); hostsRef = null; }
+
+    // Remove shared-events entries for all collaborators
+    database.ref(`users/${currentUserId}/events/${eventId}/collaborators`).once('value', (snap) => {
+        if (snap.exists()) {
+            snap.forEach((child) => {
+                const emailKey = child.key;
+                database.ref(`shared-events/${emailKey}/${currentUserId}_${eventId}`).remove().catch(() => {});
+            });
+        }
+    });
+
+    // Delete the entire event node
+    eventsRef.child(eventId).remove()
+        .then(() => {
+            // Clear local state
+            currentEventId = null;
+            currentEventMeta = null;
+            currentEventName = null;
+            guests = [];
+            hosts = [];
+            localStorage.removeItem(getEventStorageKey());
+
+            renderGuestTable();
+            renderHostDropdowns();
+            updateDashboard();
+            updateEventHeader(null);
+
+            showToast(`"${eventName}" has been deleted`, 'success');
+        })
+        .catch((error) => {
+            console.error('Failed to delete event:', error);
+            showToast('Failed to delete event', 'error');
+        });
+}
+
+// Hide delete option for co-hosts viewing shared events
+function updateDeleteEventVisibility() {
+    const deleteItem = document.getElementById('deleteEventItem');
+    if (!deleteItem) return;
+    if (currentEventMeta?.isShared || (currentEventMeta?.ownerUid && currentEventMeta.ownerUid !== currentUserId)) {
+        deleteItem.style.display = 'none';
+    } else {
+        deleteItem.style.display = '';
+    }
 }
 
 function loadEventsAndRestoreSelection() {
@@ -1250,30 +1325,34 @@ function loadSharedEvents() {
             });
         }
 
-        // Show shared events banner for easy access
-        renderSharedEventsBanner();
-
-        // Register co-host UID with each shared event owner's data
-        registerCoHostUid();
+        // Register co-host UID first, then show shared events
+        registerCoHostUid().then(() => {
+            renderSharedEventsBanner();
+        });
     });
 }
 
 // Register the co-host's UID with the event owner's data so Firebase rules can authorize
-function registerCoHostUid() {
+async function registerCoHostUid() {
     if (!currentUserId || !currentUser?.email) return;
 
+    const promises = [];
     Object.keys(sharedEventOwners).forEach((key) => {
         const shared = sharedEventOwners[key];
         const emailKey = emailToKey(currentUser.email);
         // Write to collaborators (existing path)
-        database.ref(`users/${shared.ownerUid}/events/${shared.eventId}/collaborators/${emailKey}/uid`)
-            .set(currentUserId)
-            .catch(() => {});
+        promises.push(
+            database.ref(`users/${shared.ownerUid}/events/${shared.eventId}/collaborators/${emailKey}/uid`)
+                .set(currentUserId).catch(() => {})
+        );
         // Write to collaborators_uid (used by security rules for fast lookup)
-        database.ref(`users/${shared.ownerUid}/events/${shared.eventId}/collaborators_uid/${currentUserId}`)
-            .set(true)
-            .catch(() => {});
+        promises.push(
+            database.ref(`users/${shared.ownerUid}/events/${shared.eventId}/collaborators_uid/${currentUserId}`)
+                .set(true).catch(() => {})
+        );
     });
+    // Wait for all UID registrations to complete before allowing event selection
+    await Promise.allSettled(promises);
 }
 
 // Show a banner listing shared events
@@ -1420,6 +1499,15 @@ function verifySharedAccess(ownerUid, eventId) {
         });
 }
 
+// EmailJS Configuration - Free tier: 200 emails/month
+// To set up: 1) Go to https://www.emailjs.com and create free account
+//            2) Create an Email Service (Gmail, Outlook, etc.)
+//            3) Create an Email Template with variables: to_email, to_name, from_name, event_name, app_url
+//            4) Replace the IDs below with your own
+const EMAILJS_PUBLIC_KEY = 'YOUR_EMAILJS_PUBLIC_KEY';  // Replace after setup
+const EMAILJS_SERVICE_ID = 'YOUR_SERVICE_ID';          // Replace after setup
+const EMAILJS_TEMPLATE_ID = 'YOUR_TEMPLATE_ID';        // Replace after setup
+
 function sendCollaborationEmail(email, hostName) {
     if (!email) return;
 
@@ -1427,6 +1515,32 @@ function sendCollaborationEmail(email, hostName) {
     const ownerName = currentUser?.displayName || currentUser?.email || 'Someone';
     const appUrl = window.location.href.split('?')[0];
 
+    // Try EmailJS first (sends real email automatically)
+    if (window.emailjs && EMAILJS_PUBLIC_KEY !== 'YOUR_EMAILJS_PUBLIC_KEY') {
+        emailjs.init(EMAILJS_PUBLIC_KEY);
+        emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+            to_email: email,
+            to_name: hostName,
+            from_name: ownerName,
+            event_name: eventName,
+            app_url: appUrl,
+            message: `You have been invited to collaborate on the guest list for "${eventName}". ` +
+                     `Sign in or create an account at ${appUrl} using this email (${email}). ` +
+                     `The shared event will appear automatically in your dashboard.`
+        }).then(() => {
+            showToast(`Invitation email sent to ${email}!`, 'success');
+        }).catch((err) => {
+            console.error('EmailJS error:', err);
+            // Fallback to mailto
+            openMailtoFallback(email, hostName, eventName, ownerName, appUrl);
+        });
+    } else {
+        // Fallback: open user's email client
+        openMailtoFallback(email, hostName, eventName, ownerName, appUrl);
+    }
+}
+
+function openMailtoFallback(email, hostName, eventName, ownerName, appUrl) {
     const subject = encodeURIComponent(`You're invited to collaborate on "${eventName}" - InviteePro`);
     const body = encodeURIComponent(
         `Hi ${hostName},\n\n` +
@@ -1438,10 +1552,8 @@ function sendCollaborationEmail(email, hostName) {
         `3. The shared event will appear automatically in your dashboard\n\n` +
         `Happy planning!\n${ownerName}`
     );
-
-    // Open default email client
     window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
-    showToast(`Email invitation opened for ${email}`, 'success');
+    showToast(`Email client opened for ${email}`, 'success');
 }
 
 function grantCollabAccess(firebaseKey, email, hostName) {

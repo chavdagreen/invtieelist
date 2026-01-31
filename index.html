@@ -22,6 +22,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <!-- EmailJS SDK for sending collaboration emails -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
     <!-- ==================== LANDING PAGE ==================== -->
@@ -1265,6 +1267,15 @@
                         <div class="settings-text">
                             <span class="settings-label">Copy All Numbers</span>
                             <span class="settings-desc">For WhatsApp broadcast</span>
+                        </div>
+                        <span class="settings-arrow">&#8250;</span>
+                    </div>
+                    <hr class="settings-divider">
+                    <div class="settings-item danger" id="deleteEventItem" onclick="deleteCurrentEvent(); closeBottomSheet('settingsSheet');">
+                        <span class="settings-icon">&#128465;</span>
+                        <div class="settings-text">
+                            <span class="settings-label">Delete Event</span>
+                            <span class="settings-desc">Permanently remove this event and all its data</span>
                         </div>
                         <span class="settings-arrow">&#8250;</span>
                     </div>
