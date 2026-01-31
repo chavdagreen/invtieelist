@@ -12,9 +12,15 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-firebase.initializeApp(firebaseConfig);
-const database = firebase.database();
-const auth = firebase.auth();
+let database = null;
+let auth = null;
+if (window.firebase && firebase.initializeApp) {
+    firebase.initializeApp(firebaseConfig);
+    database = firebase.database();
+    auth = firebase.auth();
+} else {
+    console.warn('Firebase SDK failed to load. Auth and sync features are disabled.');
+}
 
 let guestsRef = null;
 let hostsRef = null;
@@ -54,6 +60,11 @@ document.addEventListener('DOMContentLoaded', function() {
     setupOnlineStatusListeners();
     showSyncStatus();
     setupContactPicker();
+
+    if (!auth) {
+        showToast('Auth is unavailable. Check your connection or refresh.', 'error');
+        return;
+    }
 
     // Listen for auth state changes
     auth.onAuthStateChanged((user) => {
@@ -190,6 +201,10 @@ function getAuthErrorMessage(error) {
 }
 
 function signInWithGoogle() {
+    if (!auth) {
+        showToast('Auth is unavailable right now. Please refresh and try again.', 'error');
+        return;
+    }
     const provider = new firebase.auth.GoogleAuthProvider();
     auth.signInWithPopup(provider)
         .then((result) => {
@@ -202,6 +217,10 @@ function signInWithGoogle() {
 }
 
 function signInWithEmail() {
+    if (!auth) {
+        showToast('Auth is unavailable right now. Please refresh and try again.', 'error');
+        return;
+    }
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
 
@@ -221,6 +240,10 @@ function signInWithEmail() {
 }
 
 function signUpWithEmail() {
+    if (!auth) {
+        showToast('Auth is unavailable right now. Please refresh and try again.', 'error');
+        return;
+    }
     const name = document.getElementById('signupName').value.trim();
     const email = document.getElementById('signupEmail').value.trim();
     const password = document.getElementById('signupPassword').value;
@@ -267,6 +290,10 @@ function sendPasswordReset() {
 }
 
 function signOutUser() {
+    if (!auth) {
+        showToast('Auth is unavailable right now.', 'error');
+        return;
+    }
     if (confirm('Are you sure you want to sign out?')) {
         auth.signOut()
             .then(() => {
@@ -658,18 +685,7 @@ function loadEventsAndRestoreSelection() {
 
 async function selectEvent(eventId, meta) {
     if (!eventId || !currentUserId) return;
-
-    // Detach old listeners FIRST to prevent race conditions
-    if (guestsRef) {
-        guestsRef.off();
-        guestsRef = null;
-    }
-    if (hostsRef) {
-        hostsRef.off();
-        hostsRef = null;
-    }
-
-    // Now safe to update current event ID
+    const previousEventId = currentEventId;
     currentEventId = eventId;
 
     // Fetch meta if not provided
@@ -690,6 +706,33 @@ async function selectEvent(eventId, meta) {
     // Update UI
     updateEventHeader(currentEventMeta);
 
+    const eventSelect = document.getElementById('eventSelect');
+    if (eventSelect && eventSelect.value !== eventId) {
+        eventSelect.value = eventId;
+    }
+
+    guestsRef?.off();
+    hostsRef?.off();
+    // User-specific paths
+    guestsRef = database.ref(`users/${currentUserId}/events/${eventId}/guests`);
+    hostsRef = database.ref(`users/${currentUserId}/events/${eventId}/hosts`);
+
+    const isEventSwitch = previousEventId !== eventId;
+    if (isEventSwitch) {
+        resetEventFilters();
+    }
+
+    if (previousEventId && isEventSwitch) {
+        guests = [];
+        hosts = [];
+        renderGuestTable();
+        renderHostDropdowns();
+        renderHostList();
+        updateDashboard();
+    }
+
+    loadGuestsFromLocal();
+    loadHostsFromLocal();
     // Sync dropdown
     const eventSelect = document.getElementById('eventSelect');
     if (eventSelect) eventSelect.value = eventId;
@@ -885,12 +928,73 @@ function renderHostList() {
                     <span class="host-item-count">${guestCount} guest${guestCount !== 1 ? 's' : ''} linked</span>
                 </div>
                 <div class="host-item-actions">
-                    <button class="btn btn-small btn-outline host-edit-btn" onclick="openEditHostModal('${host.firebaseKey}')" title="Edit host">&#9998;</button>
-                    <button class="btn btn-small btn-danger" onclick="deleteHost('${host.firebaseKey}', '${escapeHtml(host.name)}')">&#128465;</button>
+                    <button class="btn btn-small btn-outline" onclick="openEditHostModal('${host.firebaseKey}')" title="Edit host">✏️</button>
+                    <button class="btn btn-small btn-danger" onclick="deleteHost('${host.firebaseKey}', '${escapeHtml(host.name)}')">Delete</button>
                 </div>
             </div>
         `;
     }).join('');
+}
+
+function openEditHostModal(firebaseKey) {
+    const host = hosts.find(item => item.firebaseKey === firebaseKey);
+    if (!host) return;
+    const modal = document.getElementById('hostEditModal');
+    if (!modal) return;
+    modal.dataset.hostKey = firebaseKey;
+    document.getElementById('editHostName').value = host.name || '';
+    document.getElementById('editHostEmail').value = host.email || '';
+    const shareToggle = document.getElementById('editHostShareToggle');
+    if (shareToggle) shareToggle.checked = Boolean(host.shareEnabled);
+    openModal('hostEditModal');
+}
+
+function saveHostEdits(event) {
+    event.preventDefault();
+    const modal = document.getElementById('hostEditModal');
+    const firebaseKey = modal?.dataset.hostKey;
+    if (!firebaseKey) return;
+
+    const name = document.getElementById('editHostName').value.trim();
+    const email = document.getElementById('editHostEmail').value.trim();
+    const shareToggle = document.getElementById('editHostShareToggle');
+    const shareEnabled = shareToggle ? shareToggle.checked : false;
+
+    if (!name) {
+        showToast('Please enter a host name', 'error');
+        return;
+    }
+
+    const duplicate = hosts.find(host => host.firebaseKey !== firebaseKey && host.name.toLowerCase() === name.toLowerCase());
+    if (duplicate) {
+        showToast('Another host already uses this name', 'error');
+        return;
+    }
+
+    const payload = {
+        name,
+        email: email || '',
+        shareEnabled,
+        updatedAt: new Date().toISOString()
+    };
+
+    hostsRef.child(firebaseKey).update(payload)
+        .then(() => {
+            showToast('Host updated successfully!', 'success');
+            closeModal('hostEditModal');
+        })
+        .catch((error) => {
+            console.error('Firebase host update error:', error);
+            const index = hosts.findIndex(item => item.firebaseKey === firebaseKey);
+            if (index !== -1) {
+                hosts[index] = { ...hosts[index], ...payload };
+                localStorage.setItem(getHostsStorageKey(), JSON.stringify(hosts));
+                renderHostDropdowns();
+                renderHostList();
+            }
+            showToast('Saved host changes locally', 'success');
+            closeModal('hostEditModal');
+        });
 }
 
 function openHostModal() {

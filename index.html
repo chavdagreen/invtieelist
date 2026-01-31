@@ -853,6 +853,36 @@
         </div>
     </div>
 
+    <!-- Edit Host Modal -->
+    <div class="modal" id="hostEditModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Host</h2>
+                <button class="close-btn" onclick="closeModal('hostEditModal')">&times;</button>
+            </div>
+            <form class="host-edit-form" onsubmit="saveHostEdits(event)">
+                <label for="editHostName">Host name</label>
+                <input type="text" id="editHostName" placeholder="Enter host name">
+                <label for="editHostEmail">Email (optional)</label>
+                <input type="email" id="editHostEmail" placeholder="Enter email">
+                <div class="toggle-row">
+                    <div>
+                        <strong>Sharing enabled</strong>
+                        <p class="helper-text">Allow this host to access shared event details.</p>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="editHostShareToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('hostEditModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Export Modal -->
     <div class="modal" id="exportModal">
         <div class="modal-content">
