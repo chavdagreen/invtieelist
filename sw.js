@@ -1,5 +1,5 @@
 // InviteePro Service Worker v1.0.0
-const CACHE_NAME = 'inviteepro-v3';
+const CACHE_NAME = 'inviteepro-v4';
 const STATIC_ASSETS = [
   './',
   './index.html',
