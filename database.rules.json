@@ -20,13 +20,18 @@
             },
             "collaborators": {
               ".read": "auth != null && auth.uid === $uid",
-              ".write": "auth != null && auth.uid === $uid"
+              ".write": "auth != null && auth.uid === $uid",
+              "$emailKey": {
+                "uid": {
+                  ".write": "auth != null"
+                }
+              }
             },
             "collaborators_uid": {
               ".read": "auth != null && auth.uid === $uid",
               ".write": "auth != null && auth.uid === $uid",
               "$coHostUid": {
-                ".write": "auth != null && auth.uid === $coHostUid && !data.exists()"
+                ".write": "auth != null && auth.uid === $coHostUid"
               }
             }
           }
