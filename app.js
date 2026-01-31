@@ -674,11 +674,13 @@ function deleteCurrentEvent() {
 // Hide delete option for co-hosts viewing shared events
 function updateDeleteEventVisibility() {
     const deleteItem = document.getElementById('deleteEventItem');
-    if (!deleteItem) return;
-    if (currentEventMeta?.isShared || (currentEventMeta?.ownerUid && currentEventMeta.ownerUid !== currentUserId)) {
-        deleteItem.style.display = 'none';
-    } else {
-        deleteItem.style.display = '';
+    const deleteBtn = document.getElementById('deleteEventBtn');
+    const isShared = currentEventMeta?.isShared || (currentEventMeta?.ownerUid && currentEventMeta.ownerUid !== currentUserId);
+    if (deleteItem) {
+        deleteItem.style.display = isShared ? 'none' : '';
+    }
+    if (deleteBtn) {
+        deleteBtn.style.display = (currentEventId && !isShared) ? '' : 'none';
     }
 }
 
