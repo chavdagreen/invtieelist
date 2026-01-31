@@ -685,7 +685,11 @@ function loadEventsAndRestoreSelection() {
 
 async function selectEvent(eventId, meta) {
     if (!eventId || !currentUserId) return;
-    const previousEventId = currentEventId;
+
+    // Detach old listeners FIRST to prevent race conditions
+    if (guestsRef) { guestsRef.off(); guestsRef = null; }
+    if (hostsRef) { hostsRef.off(); hostsRef = null; }
+
     currentEventId = eventId;
 
     // Fetch meta if not provided
@@ -706,33 +710,6 @@ async function selectEvent(eventId, meta) {
     // Update UI
     updateEventHeader(currentEventMeta);
 
-    const eventSelect = document.getElementById('eventSelect');
-    if (eventSelect && eventSelect.value !== eventId) {
-        eventSelect.value = eventId;
-    }
-
-    guestsRef?.off();
-    hostsRef?.off();
-    // User-specific paths
-    guestsRef = database.ref(`users/${currentUserId}/events/${eventId}/guests`);
-    hostsRef = database.ref(`users/${currentUserId}/events/${eventId}/hosts`);
-
-    const isEventSwitch = previousEventId !== eventId;
-    if (isEventSwitch) {
-        resetEventFilters();
-    }
-
-    if (previousEventId && isEventSwitch) {
-        guests = [];
-        hosts = [];
-        renderGuestTable();
-        renderHostDropdowns();
-        renderHostList();
-        updateDashboard();
-    }
-
-    loadGuestsFromLocal();
-    loadHostsFromLocal();
     // Sync dropdown
     const eventSelect = document.getElementById('eventSelect');
     if (eventSelect) eventSelect.value = eventId;
@@ -747,14 +724,13 @@ async function selectEvent(eventId, meta) {
     hosts = [];
     renderGuestTable();
     renderHostDropdowns();
+    renderHostList();
     updateDashboard();
     updateCohostActivityBar();
 
     // Attach new listeners for this event's data
     guestsRef.on('value', (snap) => {
-        // Guard: only process if this ref still matches current event
         if (currentEventId !== eventId) return;
-
         const data = [];
         if (snap.exists()) {
             snap.forEach((child) => {
@@ -768,9 +744,7 @@ async function selectEvent(eventId, meta) {
     });
 
     hostsRef.on('value', (snap) => {
-        // Guard: only process if this ref still matches current event
         if (currentEventId !== eventId) return;
-
         const data = [];
         if (snap.exists()) {
             snap.forEach((child) => {
