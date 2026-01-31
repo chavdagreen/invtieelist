@@ -1111,6 +1111,7 @@ function shareEventWithCoHost(email, hostName) {
                 hostName: hostName,
                 sharedAt: new Date().toISOString()
             });
+            // Note: collaborators_uid will be populated when co-host logs in via registerCoHostUid()
             showToast(`Collaboration access granted to ${email}`, 'success');
         })
         .catch((error) => {
@@ -1186,11 +1187,14 @@ function registerCoHostUid() {
     Object.keys(sharedEventOwners).forEach((key) => {
         const shared = sharedEventOwners[key];
         const emailKey = emailToKey(currentUser.email);
+        // Write to collaborators (existing path)
         database.ref(`users/${shared.ownerUid}/events/${shared.eventId}/collaborators/${emailKey}/uid`)
             .set(currentUserId)
-            .catch(() => {
-                // Ignore - might not have write permission yet
-            });
+            .catch(() => {});
+        // Write to collaborators_uid (used by security rules for fast lookup)
+        database.ref(`users/${shared.ownerUid}/events/${shared.eventId}/collaborators_uid/${currentUserId}`)
+            .set(true)
+            .catch(() => {});
     });
 }
 
@@ -1458,7 +1462,16 @@ function revokeSharing(email) {
     // Remove from shared-events
     database.ref(`shared-events/${emailKey}/${ownerUid}_${currentEventId}`).remove().catch(() => {});
     // Remove from collaborators
-    database.ref(`users/${ownerUid}/events/${currentEventId}/collaborators/${emailKey}`).remove().catch(() => {});
+    database.ref(`users/${ownerUid}/events/${currentEventId}/collaborators/${emailKey}`).once('value', (snap) => {
+        if (snap.exists()) {
+            const uid = snap.val().uid;
+            // Remove UID lookup used by security rules
+            if (uid) {
+                database.ref(`users/${ownerUid}/events/${currentEventId}/collaborators_uid/${uid}`).remove().catch(() => {});
+            }
+        }
+        snap.ref.remove().catch(() => {});
+    });
 }
 
 // ==================== CO-HOST ACTIVITY ====================
