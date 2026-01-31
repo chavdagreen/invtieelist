@@ -1,5 +1,5 @@
 // InviteePro Service Worker v1.0.0
-const CACHE_NAME = 'inviteepro-v1';
+const CACHE_NAME = 'inviteepro-v2';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -125,7 +125,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first strategy for static assets
+  // Network-first for core app files (JS, CSS, HTML) so updates are immediate
+  const coreFile = requestUrl.endsWith('.js') || requestUrl.endsWith('.css') || requestUrl.endsWith('.html');
+  if (coreFile) {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if (response && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      }).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Cache-first strategy for other static assets (images, fonts)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
