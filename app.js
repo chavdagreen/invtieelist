@@ -165,6 +165,41 @@ function toggleMobileMenu() {
     }
 }
 
+// Friendly error messages for Firebase auth errors
+function getAuthErrorMessage(error) {
+    const code = error.code || '';
+    switch (code) {
+        case 'auth/user-not-found':
+            return 'No account found with this email. Please sign up first.';
+        case 'auth/wrong-password':
+        case 'auth/invalid-credential':
+            return 'Incorrect password. Please try again or reset your password.';
+        case 'auth/invalid-email':
+            return 'Please enter a valid email address.';
+        case 'auth/email-already-in-use':
+            return 'An account with this email already exists. Please sign in instead.';
+        case 'auth/weak-password':
+            return 'Password is too weak. Use at least 6 characters with a mix of letters and numbers.';
+        case 'auth/too-many-requests':
+            return 'Too many failed attempts. Please wait a few minutes and try again.';
+        case 'auth/network-request-failed':
+            return 'Network error. Please check your internet connection and try again.';
+        case 'auth/popup-closed-by-user':
+            return 'Sign-in was cancelled. Please try again.';
+        case 'auth/popup-blocked':
+            return 'Sign-in popup was blocked. Please allow popups for this site.';
+        case 'auth/account-exists-with-different-credential':
+            return 'An account already exists with the same email but different sign-in method.';
+        case 'auth/user-disabled':
+            return 'This account has been disabled. Please contact support.';
+        case 'auth/operation-not-allowed':
+            return 'This sign-in method is not enabled. Please contact the app administrator.';
+        default:
+            console.warn('Unhandled auth error code:', code);
+            return error.message || 'An unexpected error occurred. Please try again.';
+    }
+}
+
 function signInWithGoogle() {
     if (!auth) {
         showToast('Auth is unavailable right now. Please refresh and try again.', 'error');
@@ -177,7 +212,7 @@ function signInWithGoogle() {
         })
         .catch((error) => {
             console.error('Google sign-in error:', error);
-            showToast(error.message || 'Sign-in failed', 'error');
+            showToast(getAuthErrorMessage(error), 'error');
         });
 }
 
@@ -200,7 +235,7 @@ function signInWithEmail() {
         })
         .catch((error) => {
             console.error('Email sign-in error:', error);
-            showToast(error.message || 'Sign-in failed', 'error');
+            showToast(getAuthErrorMessage(error), 'error');
         });
 }
 
@@ -225,7 +260,6 @@ function signUpWithEmail() {
 
     auth.createUserWithEmailAndPassword(email, password)
         .then((result) => {
-            // Update profile with name
             return result.user.updateProfile({ displayName: name });
         })
         .then(() => {
@@ -233,7 +267,25 @@ function signUpWithEmail() {
         })
         .catch((error) => {
             console.error('Sign-up error:', error);
-            showToast(error.message || 'Sign-up failed', 'error');
+            showToast(getAuthErrorMessage(error), 'error');
+        });
+}
+
+function sendPasswordReset() {
+    const email = document.getElementById('resetEmail').value.trim();
+    if (!email) {
+        showToast('Please enter your email address', 'error');
+        return;
+    }
+
+    auth.sendPasswordResetEmail(email)
+        .then(() => {
+            showToast('Password reset link sent! Check your inbox.', 'success');
+            showLoginForm();
+        })
+        .catch((error) => {
+            console.error('Password reset error:', error);
+            showToast(getAuthErrorMessage(error), 'error');
         });
 }
 
@@ -248,7 +300,7 @@ function signOutUser() {
                 showToast('Signed out successfully', 'success');
             })
             .catch((error) => {
-                showToast('Sign-out failed', 'error');
+                showToast('Sign-out failed. Please try again.', 'error');
             });
     }
 }
@@ -256,11 +308,22 @@ function signOutUser() {
 function showSignupForm() {
     document.getElementById('loginForm').style.display = 'none';
     document.getElementById('signupForm').style.display = 'block';
+    const forgotForm = document.getElementById('forgotPasswordForm');
+    if (forgotForm) forgotForm.style.display = 'none';
+}
+
+function showForgotPasswordForm() {
+    document.getElementById('loginForm').style.display = 'none';
+    document.getElementById('signupForm').style.display = 'none';
+    document.getElementById('forgotPasswordForm').style.display = 'block';
+    document.getElementById('resetEmail').focus();
 }
 
 function showLoginForm() {
     document.getElementById('signupForm').style.display = 'none';
     document.getElementById('loginForm').style.display = 'block';
+    const forgotForm = document.getElementById('forgotPasswordForm');
+    if (forgotForm) forgotForm.style.display = 'none';
 }
 
 function initUserData() {
@@ -455,6 +518,9 @@ function updateEventHeader(meta) {
     if (currentEventNameEl) {
         currentEventNameEl.textContent = (meta.name || 'No event selected') + sharedLabel;
     }
+
+    // Update co-host activity bar
+    updateCohostActivityBar();
 }
 
 function openEventModal() {
@@ -682,6 +748,7 @@ async function selectEvent(eventId, meta) {
     renderGuestTable();
     renderHostDropdowns();
     updateDashboard();
+    updateCohostActivityBar();
 
     // Attach new listeners for this event's data
     guestsRef.on('value', (snap) => {
@@ -1148,6 +1215,7 @@ function shareEventWithCoHost(email, hostName) {
                 hostName: hostName,
                 sharedAt: new Date().toISOString()
             });
+            // Note: collaborators_uid will be populated when co-host logs in via registerCoHostUid()
             showToast(`Collaboration access granted to ${email}`, 'success');
         })
         .catch((error) => {
@@ -1223,11 +1291,14 @@ function registerCoHostUid() {
     Object.keys(sharedEventOwners).forEach((key) => {
         const shared = sharedEventOwners[key];
         const emailKey = emailToKey(currentUser.email);
+        // Write to collaborators (existing path)
         database.ref(`users/${shared.ownerUid}/events/${shared.eventId}/collaborators/${emailKey}/uid`)
             .set(currentUserId)
-            .catch(() => {
-                // Ignore - might not have write permission yet
-            });
+            .catch(() => {});
+        // Write to collaborators_uid (used by security rules for fast lookup)
+        database.ref(`users/${shared.ownerUid}/events/${shared.eventId}/collaborators_uid/${currentUserId}`)
+            .set(true)
+            .catch(() => {});
     });
 }
 
@@ -1352,6 +1423,7 @@ async function selectSharedEvent(ownerUid, eventId) {
 
     // Update banner active state
     renderSharedEventsBanner();
+    updateCohostActivityBar();
 
     triggerHaptic('medium');
     showToast(`Opened shared event: ${currentEventName}`, 'success');
@@ -1411,6 +1483,135 @@ function grantCollabAccess(firebaseKey, email, hostName) {
             console.error('Failed to update host:', error);
             showToast('Failed to grant access', 'error');
         });
+}
+
+// ==================== EDIT HOST ====================
+
+function openEditHostModal(firebaseKey) {
+    const host = hosts.find(h => h.firebaseKey === firebaseKey);
+    if (!host) { showToast('Host not found', 'error'); return; }
+
+    document.getElementById('editHostKey').value = firebaseKey;
+    document.getElementById('editHostName').value = host.name || '';
+    document.getElementById('editHostEmail').value = host.email || '';
+    document.getElementById('editHostMobile').value = host.mobile || '';
+    const collabCheckbox = document.getElementById('editHostCollaborate');
+    collabCheckbox.checked = !!host.collaborate;
+    toggleEditCollabHint();
+    collabCheckbox.addEventListener('change', toggleEditCollabHint);
+    openModal('editHostModal');
+}
+
+function toggleEditCollabHint() {
+    const cb = document.getElementById('editHostCollaborate');
+    const hint = document.getElementById('editCollabHint');
+    if (hint) hint.style.display = cb && cb.checked ? 'block' : 'none';
+}
+
+function updateHost() {
+    const firebaseKey = document.getElementById('editHostKey').value;
+    if (!firebaseKey || !hostsRef) { showToast('Error: no host selected', 'error'); return; }
+
+    const name = document.getElementById('editHostName').value.trim();
+    const email = document.getElementById('editHostEmail').value.trim();
+    const mobile = document.getElementById('editHostMobile').value.trim();
+    const collaborate = document.getElementById('editHostCollaborate').checked;
+
+    if (!name) { showToast('Host name is required', 'error'); return; }
+    if (collaborate && !email) { showToast('Email is required for collaboration', 'error'); return; }
+    if (mobile && !/^\d{10}$/.test(mobile)) { showToast('Enter a valid 10-digit mobile number', 'error'); return; }
+
+    const oldHost = hosts.find(h => h.firebaseKey === firebaseKey);
+    const oldName = oldHost ? oldHost.name : '';
+    const wasCollaborating = oldHost ? !!oldHost.collaborate : false;
+
+    const updatedData = { name, email: email || '', mobile: mobile || '', collaborate };
+
+    hostsRef.child(firebaseKey).update(updatedData)
+        .then(() => {
+            // If host name changed, update all guests linked to old name
+            if (oldName && oldName !== name) {
+                guests.forEach(g => {
+                    if (g.relativeOf === oldName && g.firebaseKey && guestsRef) {
+                        guestsRef.child(g.firebaseKey).update({ relativeOf: name });
+                    }
+                });
+            }
+
+            // If collaboration was just enabled, share event and send email
+            if (collaborate && email && !wasCollaborating) {
+                shareEventWithCoHost(email, name);
+                sendCollaborationEmail(email, name);
+            }
+
+            // If collaboration was disabled, revoke sharing
+            if (!collaborate && wasCollaborating && oldHost?.email) {
+                revokeSharing(oldHost.email);
+            }
+
+            showToast('Host updated successfully', 'success');
+            closeModal('editHostModal');
+        })
+        .catch((error) => {
+            console.error('Failed to update host:', error);
+            showToast('Failed to update host', 'error');
+        });
+}
+
+function revokeSharing(email) {
+    if (!email || !currentEventId || !currentUserId) return;
+    const emailKey = emailToKey(email);
+    const ownerUid = currentEventMeta?.ownerUid || currentUserId;
+
+    // Remove from shared-events
+    database.ref(`shared-events/${emailKey}/${ownerUid}_${currentEventId}`).remove().catch(() => {});
+    // Remove from collaborators
+    database.ref(`users/${ownerUid}/events/${currentEventId}/collaborators/${emailKey}`).once('value', (snap) => {
+        if (snap.exists()) {
+            const uid = snap.val().uid;
+            // Remove UID lookup used by security rules
+            if (uid) {
+                database.ref(`users/${ownerUid}/events/${currentEventId}/collaborators_uid/${uid}`).remove().catch(() => {});
+            }
+        }
+        snap.ref.remove().catch(() => {});
+    });
+}
+
+// ==================== CO-HOST ACTIVITY ====================
+
+function updateCohostActivityBar() {
+    const bar = document.getElementById('cohostActivityBar');
+    const text = document.getElementById('cohostActivityText');
+    const badge = document.getElementById('cohostActivityBadge');
+    if (!bar) return;
+
+    if (currentEventMeta?.isShared) {
+        // This user is viewing a shared event
+        const ownerName = currentEventMeta.ownerName || sharedEventOwners[`${currentEventMeta.ownerUid}_${currentEventId}`]?.ownerName || 'Owner';
+        bar.style.display = 'flex';
+        text.textContent = `Shared by ${ownerName}`;
+        badge.textContent = 'Co-host';
+        badge.className = 'cohost-activity-badge badge-cohost';
+    } else if (currentEventId && currentUserId) {
+        // Check if this event has collaborators
+        const ownerUid = currentEventMeta?.ownerUid || currentUserId;
+        database.ref(`users/${ownerUid}/events/${currentEventId}/collaborators`).once('value', (snap) => {
+            if (snap.exists() && snap.numChildren() > 0) {
+                const collabs = [];
+                snap.forEach(c => { collabs.push(c.val().email || c.val().hostName || 'co-host'); });
+                bar.style.display = 'flex';
+                text.textContent = `Shared with ${collabs.length} co-host(s)`;
+                badge.textContent = 'Owner';
+                badge.className = 'cohost-activity-badge badge-owner';
+            } else {
+                bar.style.display = 'none';
+            }
+        });
+        return;
+    } else {
+        bar.style.display = 'none';
+    }
 }
 
 // ==================== GUEST MANAGEMENT ====================

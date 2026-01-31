@@ -1,0 +1,45 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "events": {
+          "$eventId": {
+            "guests": {
+              ".read": "auth != null && (auth.uid === $uid || root.child('users/' + $uid + '/events/' + $eventId + '/collaborators_uid/' + auth.uid).exists())",
+              ".write": "auth != null && (auth.uid === $uid || root.child('users/' + $uid + '/events/' + $eventId + '/collaborators_uid/' + auth.uid).exists())"
+            },
+            "hosts": {
+              ".read": "auth != null && (auth.uid === $uid || root.child('users/' + $uid + '/events/' + $eventId + '/collaborators_uid/' + auth.uid).exists())",
+              ".write": "auth != null && (auth.uid === $uid || root.child('users/' + $uid + '/events/' + $eventId + '/collaborators_uid/' + auth.uid).exists())"
+            },
+            "meta": {
+              ".read": "auth != null && (auth.uid === $uid || root.child('users/' + $uid + '/events/' + $eventId + '/collaborators_uid/' + auth.uid).exists())",
+              ".write": "auth != null && auth.uid === $uid"
+            },
+            "collaborators": {
+              ".read": "auth != null && auth.uid === $uid",
+              ".write": "auth != null && auth.uid === $uid"
+            },
+            "collaborators_uid": {
+              ".read": "auth != null && auth.uid === $uid",
+              ".write": "auth != null && auth.uid === $uid",
+              "$coHostUid": {
+                ".write": "auth != null && auth.uid === $coHostUid && !data.exists()"
+              }
+            }
+          }
+        }
+      }
+    },
+    "shared-events": {
+      "$emailKey": {
+        ".read": "auth != null",
+        "$shareId": {
+          ".write": "auth != null"
+        }
+      }
+    }
+  }
+}
