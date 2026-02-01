@@ -1,11 +1,12 @@
 // InviteePro Service Worker v1.0.0
-const CACHE_NAME = 'inviteepro-v4';
+const CACHE_NAME = 'inviteepro-v5';
 const STATIC_ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
   './manifest.json',
+  './Invitee Pro Logo.svg',
   './icons/icon-72.png',
   './icons/icon-96.png',
   './icons/icon-128.png',
