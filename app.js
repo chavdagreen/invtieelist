@@ -502,7 +502,7 @@ function updateEventHeader(meta) {
 
     if (!titleEl || !subtitleEl) return;
     if (!meta) {
-        titleEl.innerHTML = '<img src="Invitee Pro Logo.svg" alt="InviteePro" style="height:36px;vertical-align:middle;">';
+        titleEl.innerHTML = '<img src="Invitee Logo2.png" alt="InviteePro" style="height:36px;vertical-align:middle;">';
         subtitleEl.textContent = 'Create multiple events and manage invitees.';
         if (currentEventNameEl) currentEventNameEl.textContent = 'No event selected';
         return;
